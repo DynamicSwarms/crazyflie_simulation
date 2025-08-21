@@ -13,6 +13,7 @@ from tf_transformations import quaternion_about_axis
 from crazyflie_interfaces.msg import PoseStampedArray
 from crazyflie_interfaces.msg import GenericLogData
 from typing import List
+from lifecycle_msgs.msg import TransitionEvent, State
 
 
 class CrazyflieDriverNode(WebotsRosDriver):
@@ -63,6 +64,23 @@ class CrazyflieDriverNode(WebotsRosDriver):
         )
 
         self.ros_node.create_timer(1 / 10.0, self.publish_pose)
+
+        self.transition_event_publisher = self.ros_node.create_publisher(
+            msg_type=TransitionEvent,
+            topic=self.getName() + "/transition_event",
+            qos_profile=10,
+        )
+
+        def publish_transition_event(goal_state_id):
+            event = TransitionEvent()
+            event.goal_state.id = goal_state_id
+            event.goal_state.label = (
+                "inactive" if goal_state_id == State.PRIMARY_STATE_INACTIVE else ""
+            )
+            self.transition_event_publisher.publish(event)
+
+        # Publish transition event to 'inactive' state after initialization
+        publish_transition_event(State.PRIMARY_STATE_INACTIVE)
 
     def publish_pose(self):
         state = GenericLogData()
