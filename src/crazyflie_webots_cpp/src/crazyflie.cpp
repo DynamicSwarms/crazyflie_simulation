@@ -20,7 +20,7 @@ class Crazyflie : public rclcpp_lifecycle::LifecycleNode
     Crazyflie(const rclcpp::NodeOptions &options)
     : rclcpp_lifecycle::LifecycleNode("crazyflie", options)
     , m_id(declare_parameter("id", rclcpp::ParameterValue(0), rcl_interfaces::msg::ParameterDescriptor().set__read_only(true)).get<int>())
-    , m_webots_port(declare_parameter("webots_port", rclcpp::ParameterValue("1234"), rcl_interfaces::msg::ParameterDescriptor().set__read_only(true)).get<std::string>())
+    , m_webots_port(declare_parameter("webots_port", rclcpp::ParameterValue(1234), rcl_interfaces::msg::ParameterDescriptor().set__read_only(true)).get<int>())
     , m_webots_use_tcp(declare_parameter("webots_use_tcp", rclcpp::ParameterValue(false), rcl_interfaces::msg::ParameterDescriptor().set__read_only(true)).get<bool>())
     , m_webots_tcp_ip(declare_parameter("webots_tcp_ip", rclcpp::ParameterValue("127.0.0.1"), rcl_interfaces::msg::ParameterDescriptor().set__read_only(true)).get<std::string>())
     , m_wb_driver(std::make_shared<WebotsCrazyflieDriver>(m_id, m_webots_port, m_webots_use_tcp, m_webots_tcp_ip))
@@ -63,38 +63,49 @@ class Crazyflie : public rclcpp_lifecycle::LifecycleNode
         this->get_node_parameters_interface(),
         m_wb_driver
     ))
-    {
-      // pos = 0.0;
-      // m_timer = this->create_wall_timer(
-      //   std::chrono::milliseconds(100),
-      //   [this]() {
-      //     pos += 0.1;
-      //     if (pos > 2 * 3.14159)
-      //       pos = 0.0;
-      //     std::vector<double> target = {0.5 * sin(pos), 0.5 * cos(pos), 1.0};
-      //     if (m_wb_driver) {
-      //       m_wb_driver->update_target(target, pos * 180/3.14159);
-      //     }
-      //       
-      //   });
-      
+    {    
       m_webots_callback_group = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
       m_webots_step_timer = this->create_wall_timer(
         std::chrono::microseconds(static_cast<long long>(m_wb_driver->get_time_step() * 1000.0)),
-        [this]() {
-          if (m_wb_driver) {
-            if (!m_wb_driver->step()) {
+        std::bind(&Crazyflie::webots_step_timer_callback, this),
+        m_webots_callback_group);
 
-              m_wb_driver.reset();
-              this->shutdown();
-             
-            }
-          }
-        });
+        std::cerr << "Initialized CrazyflieWebotsDriver." << std::endl;
     }
+
+
+  void webots_step_timer_callback()
+  {
+    if (m_wb_driver) {
+      if (!m_wb_driver->step()) {
+
+        m_wb_driver.reset();
+        this->shutdown();
+        
+      }
+    }
+  }
   ~Crazyflie()
   { 
+
     std::cerr << "Cleaning up CrazyflieWebotsDriver." << std::endl;
+    m_webots_step_timer->cancel();
+    m_webots_step_timer.reset();
+    std::cerr << "Cleaning up WebotsCrazyflieDriver." << std::endl;
+    m_wb_driver.reset();
+    std::cerr << "Cleaning up CRTP modules." << std::endl;
+    m_console.reset();
+    std::cerr << "Cleaning up GenericCommander." << std::endl;
+    //m_generic_commander.reset();
+    std::cerr << "Cleaning up HighLevelCommander." << std::endl;
+    m_hl_commander.reset();
+    std::cerr << "Cleaning up Localization." << std::endl;
+    m_localization.reset();
+    std::cerr << "Cleaning up Logging." << std::endl;
+    m_logging.reset();
+    std::cerr << "Cleaning up Parameters." << std::endl;
+    m_parameters.reset();
+    std::cerr << "Cleaned up CrazyflieWebotsDriver." << std::endl;
   } 
 
      /**
@@ -150,7 +161,7 @@ class Crazyflie : public rclcpp_lifecycle::LifecycleNode
   private: 
     uint8_t m_id; 
 
-    std::string m_webots_port;
+    int m_webots_port;
     bool m_webots_use_tcp; 
     std::string m_webots_tcp_ip; 
 
@@ -177,12 +188,21 @@ int main(int argc, char **argv)
 
   rclcpp::init(argc, argv);
   rclcpp::NodeOptions options;
-  auto node = std::make_shared<Crazyflie>(options);
+  std::shared_ptr<Crazyflie> node;
+  try {
+    node = std::make_shared<Crazyflie>(options);
+  } catch (const WebotsInitException &e) {
+    std::cerr << "Failed to initialize Crazyflie node: " << e.what() << std::endl;
+    rclcpp::shutdown();
+    return 1;
+  }
   rclcpp::executors::MultiThreadedExecutor executor;
   executor.add_node(node->get_node_base_interface());
   while (rclcpp::ok() &&  !(node->get_current_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_FINALIZED)) executor.spin_some();
   executor.remove_node(node->get_node_base_interface());
   rclcpp::shutdown();
+
+  std::cerr << "Crazyflie node shut down cleanly." << std::endl;
   return 0;
 }
 

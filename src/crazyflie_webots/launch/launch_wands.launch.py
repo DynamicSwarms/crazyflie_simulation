@@ -1,53 +1,34 @@
 import os
-from launch import LaunchDescription, LaunchContext
+from launch import LaunchDescription
+from launch_ros.actions import Node
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
-from launch.substitutions import EnvironmentVariable, LaunchConfiguration
-from ament_index_python.packages import get_package_share_directory, get_package_prefix
-from launch.actions.execute_process import ExecuteProcess
-import yaml
-
-from typing import List
-
-
-def create_command(robot_name, description_path):
-    webots_controller_path = (
-        get_package_share_directory("webots_ros2_driver") + "/scripts/webots-controller"
-    )
-    webots_ip = EnvironmentVariable("WEBOTS_IP", default_value="127.0.0.1").perform(
-        LaunchContext()
-    )  # 192.168.56.1
-
-    return (
-        webots_controller_path
-        + " --robot-name="
-        + robot_name
-        + " --protocol=tcp --ip-address="
-        + str(webots_ip)
-        + " --port=1234 ros2 --ros-args -p robot_description:="
-        + description_path
-    )
+from launch.substitutions import LaunchConfiguration
+from ament_index_python.packages import get_package_share_directory
 
 
 def create_wand_controllers(context):
     """
     Create the wand controller nodes.
     """
-    package_dir = get_package_share_directory("crazyflie_webots")
     wand_ids_str = LaunchConfiguration("wand_ids").perform(context)
     wand_ids = list(map(int, wand_ids_str.split(",")))
 
-    wand_description_path = os.path.join(package_dir, "resource", "wand.urdf")
-    for id in wand_ids:
-        name = "Wand0" + str(id) + "_ros_ctrl"
-        wand = ExecuteProcess(
-            name="Wand",
-            cmd=[create_command(name, wand_description_path)],
-            output="screen",
-            shell=True,
-            emulate_tty=True,
-            additional_env={"WEBOTS_HOME": get_package_prefix("webots_ros2_driver")},
-        )
+    webots_port = int(LaunchConfiguration("webots_port").perform(context))
+    webots_use_tcp = LaunchConfiguration("webots_use_tcp").perform(context).lower() in ['true', '1', 'yes', 'on']
+    webots_tcp_ip = LaunchConfiguration("webots_tcp_ip").perform(context)
 
+    for id in wand_ids:
+        wand = Node(
+            package="crazyflie_webots_cpp",
+            executable="wand",
+            name="Wand0" + str(id),
+            parameters=[
+                {"id": id,
+                 "webots_port": webots_port,
+                 "webots_use_tcp": webots_use_tcp,
+                 "webots_tcp_ip": webots_tcp_ip}
+            ],
+            output="screen")    
         yield wand
 
 
@@ -59,6 +40,22 @@ def generate_launch_description():
         description="List of wand ids to be added (Need to be in Simulation.)",
     )
 
+    webots_port_launch_arg = DeclareLaunchArgument(
+        name="webots_port",
+        default_value="1234",
+        description="Webots port.")
+
+    webots_use_tcp_launch_arg = DeclareLaunchArgument(
+        name="webots_use_tcp",
+        default_value="false",
+        description="Use TCP connection to Webots (else ipc).")
+    
+    webots_tcp_ip_launch_arg = DeclareLaunchArgument(
+        name="webots_tcp_ip",
+        default_value="127.0.0.1",
+        description="Webots TCP IP address.")
+    
+
     return LaunchDescription(
-        [robots_yaml_launch_arg, OpaqueFunction(function=create_wand_controllers)]
+        [robots_yaml_launch_arg, webots_port_launch_arg, webots_use_tcp_launch_arg, webots_tcp_ip_launch_arg, OpaqueFunction(function=create_wand_controllers)]
     )

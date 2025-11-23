@@ -13,13 +13,13 @@
 #include <webots/motor.h>
 #include <webots/distance_sensor.h>
 
+#include <iostream>
 
 
 class WebotsCrazyflieDriver : public WebotsRobotDriver
 {
 public:
-    WebotsCrazyflieDriver(int id, const std::string &webots_port, bool webots_use_tcp, const std::string &webots_tcp_ip);
-
+    WebotsCrazyflieDriver(int id, int webots_port, bool webots_use_tcp, const std::string &webots_tcp_ip);
 
     bool step() override;
 

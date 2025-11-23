@@ -16,7 +16,7 @@ class Wand : public rclcpp_lifecycle::LifecycleNode
     Wand(const rclcpp::NodeOptions &options)
     : rclcpp_lifecycle::LifecycleNode("wand", options)
     , m_id(declare_parameter("id", rclcpp::ParameterValue(0), rcl_interfaces::msg::ParameterDescriptor().set__read_only(true)).get<int>())
-    , m_webots_port(declare_parameter("webots_port", rclcpp::ParameterValue("1234"), rcl_interfaces::msg::ParameterDescriptor().set__read_only(true)).get<std::string>())
+    , m_webots_port(declare_parameter("webots_port", rclcpp::ParameterValue(1234), rcl_interfaces::msg::ParameterDescriptor().set__read_only(true)).get<int>())
     , m_webots_use_tcp(declare_parameter("webots_use_tcp", rclcpp::ParameterValue(false), rcl_interfaces::msg::ParameterDescriptor().set__read_only(true)).get<bool>())
     , m_webots_tcp_ip(declare_parameter("webots_tcp_ip", rclcpp::ParameterValue("127.0.0.1"), rcl_interfaces::msg::ParameterDescriptor().set__read_only(true)).get<std::string>())
     , m_wb_driver(std::make_shared<WebotsWandDriver>(m_id, m_webots_port, m_webots_use_tcp, m_webots_tcp_ip))
@@ -114,7 +114,7 @@ class Wand : public rclcpp_lifecycle::LifecycleNode
   private: 
     uint8_t m_id; 
 
-    std::string m_webots_port;
+    int m_webots_port;
     bool m_webots_use_tcp; 
     std::string m_webots_tcp_ip; 
 

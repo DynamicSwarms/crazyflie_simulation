@@ -8,11 +8,13 @@ from threading import Thread
 from ament_index_python.packages import get_package_share_directory, get_package_prefix
 from launch.substitutions import EnvironmentVariable
 from launch import LaunchContext
-
+from ros2run.api import get_executable_path
+import signal
 import rclpy
 from rclpy import Future
 from rclpy.node import Node
 from rclpy.client import Client
+from rclpy.executors import ExternalShutdownException
 
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from lifecycle_msgs.msg import State as LifecycleState
@@ -24,6 +26,8 @@ from crazyflie_webots_gateway_interfaces.srv import WebotsCrazyflie
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
+import threading
+import sys
 
 class GatewayError(Exception):
     pass
@@ -31,6 +35,8 @@ class GatewayError(Exception):
 
 @dataclass
 class CrazyflieInstance:
+    get_state: Client
+    change_state: Client
     process: Optional[Process] = None
 
 
@@ -38,21 +44,23 @@ class Gateway(Node):
     def __init__(self, event_loop):
         super().__init__(
             "crazyflie_webots_gateway",
-            automatically_declare_parameters_from_overrides=True,
         )
+        self.declare_parameter("webots_port", 1234)
+        self.declare_parameter("webots_use_tcp", False)
+        self.declare_parameter("webots_tcp_ip", "127.0.0.1")
 
-        self._cf_event_loop = event_loop
-        self._load_paths_and_directories()
+        self._event_loop = event_loop
         self._logger = self.get_logger()
+        
 
         self._logger.info(
             "Started Webots-Gateway with "
-            + "IP: {} and PORT: {}. ".format(self._webots_ip, self._webots_port)
-            + "Change this configuration by setting eviromental variable"
-            + "'WEBOTS_IP' or 'WEBOTS_PORT' respectively. "
-            + "(e.g. 'export WEBTOS_IP=192.168.56.1')"
+            + "TCP?: {} IP: {} and PORT: {}. ".format(self._use_tcp, self._webots_ip, self._webots_port)
+            + "Change this configuration by appropriate ROS2 parameters."
         )
+        
         self.crazyflies: Dict[int, CrazyflieInstance] = {}
+        self.crazyflies_lock = threading.Lock()
         self.crazyflie_callback_group = MutuallyExclusiveCallbackGroup()
 
         callback_group = MutuallyExclusiveCallbackGroup()
@@ -72,10 +80,17 @@ class Gateway(Node):
 
     def remove_crazyflie(self, id: int) -> Tuple[bool, str]:
         self._logger.info("Removing crazyflie with ID: {}".format(id))
-        if id in self.crazyflies.keys():
-            process = self.crazyflies[id].process
-            os.killpg(os.getpgid(process.pid), SIGINT)
-            return True, "Success"
+        with self.crazyflies_lock:
+            if id in self.crazyflies.keys():
+                self._transition_crazyflie(
+                    id, LifecycleState.TRANSITION_STATE_SHUTTINGDOWN, "shutdown"
+                )
+
+                self.destroy_client(self.crazyflies[id].get_state)
+                self.destroy_client(self.crazyflies[id].change_state)
+
+                del self.crazyflies[id]
+                return True, "Success"
 
         msg = "Couldn't remove crazyflie with ID: {}; was not active. ".format(id)
         self._logger.info(msg)
@@ -84,81 +99,119 @@ class Gateway(Node):
     def remove_all_crazyflies(self) -> None:
         for cf_key in list(self.crazyflies.keys()):
             _ = self.remove_crazyflie(cf_key)
-            del self.crazyflies[cf_key]
 
     def add_crazyflie(self, id: int) -> bool:
-        self._logger.info("Adding crazyflie with ID: {}".format(id))
-        if id in self.crazyflies.keys():
-            raise GatewayError("Cannot add Crazyflie, is already in Gateway!")
-        else:
-            wait_future = asyncio.run_coroutine_threadsafe(
-                self._create_cf(id), loop=self._cf_event_loop
-            )
-            wait_future.add_done_callback(lambda fut: self._on_crazyflie_exit(fut, id))
-            success = True
-        return success
+        with self.crazyflies_lock:
+            self._logger.info("Adding crazyflie with ID: {}".format(id))
+            if id in self.crazyflies.keys():           
+                cf_state: Optional[LifecycleState] = self._get_state(id)
+                if cf_state is not None:
+                    if cf_state.id == LifecycleState.PRIMARY_STATE_UNCONFIGURED:
+                        success = self._transition_crazyflie(
+                            id,
+                            LifecycleState.TRANSITION_STATE_CONFIGURING,
+                            "configure",
+                        )
+                        return success
+                    if cf_state.id == LifecycleState.PRIMARY_STATE_ACTIVE:
+                        # Called to add a crazyflie which is already properly initialized.
+                        return True
+
+                raise GatewayError("Cannot add Crazyflie, is already in Gateway!")
+            else:
+                wait_future = asyncio.run_coroutine_threadsafe(
+                    self._create_cf(id), loop=self._event_loop
+                )
+                wait_future.add_done_callback(lambda fut: self._on_crazyflie_exit(fut, id))
+                success = True
+
+                if self._wait_for_change_state_service(id, timeout=3.0):
+                    success = self._transition_crazyflie(
+                        id,
+                        LifecycleState.TRANSITION_STATE_CONFIGURING,
+                        "configure",
+                    )
+                    return success
+                else:
+                    raise GatewayError(
+                        f"Crazyflie {id} did not provide change_state service."
+                    )
 
     def _on_crazyflie_exit(self, fut: asyncio.Future, id: int):
         """Callback invoked when a crazyflie subprocess exits."""
         self._logger.info(f"Crazyflie (id={id}) exited.")
-
-        # Clean up the crazyflie entry from the dictionary
-        if id in self.crazyflies.keys():
-            del self.crazyflies[id]
+        with self.crazyflies_lock:
+            # Clean up the crazyflie entry from the dictionary
+            if id in self.crazyflies.keys():
+                self.destroy_client(self.crazyflies[id].get_state)
+                self.destroy_client(self.crazyflies[id].change_state)
+                del self.crazyflies[id]
 
     async def _create_cf(self, id: int):
+        change_state_client = self.create_client(
+            srv_type=ChangeState,
+            srv_name=f"cf{id}/change_state",
+            callback_group=self.crazyflie_callback_group,
+        )
+        get_state_client = self.create_client(
+            srv_type=GetState,
+            srv_name=f"cf{id}/get_state",
+            callback_group=self.crazyflie_callback_group,
+        )
         cmd = self._create_start_command(id)
 
         process = await asyncio.create_subprocess_exec(*cmd, preexec_fn=os.setsid)
 
-        self.crazyflies[id] = CrazyflieInstance(process=process)
+        self.crazyflies[id] = CrazyflieInstance(change_state=change_state_client, get_state=get_state_client, process=process)
         await self.crazyflies[id].process.wait()
 
     def _create_start_command(self, id: int) -> str:
-        robot_name = "cf{}_ros_ctrl".format(id)
+        crazyflie_path = get_executable_path(
+            package_name="crazyflie_webots_cpp",
+            executable_name="crazyflie",
+        )
 
-        return [
-            "env",
-            "WEBOTS_HOME={}".format(self._webots_home),
-            self._webots_controller_path,
-            "--robot-name={}".format(robot_name),
-            "--protocol=tcp",
-            "--ip-address={}".format(self._webots_ip),
-            "--port={}".format(self._webots_port),
-            "ros2",
-            "--ros-args",
-            "-p",
-            "robot_description:={}".format(self._cf_description_path),
+        cmd = [crazyflie_path, "--ros-args"]
+
+        def add_parameter(name: str, value: str):
+            cmd.append("-p")
+            cmd.append(f"{name}:={value}")
+
+        add_parameter("id", str(id))
+        add_parameter("webots_port", str(self._webots_port))
+        add_parameter("webots_use_tcp", str(self._use_tcp).lower())
+        add_parameter("webots_tcp_ip", self._webots_ip)
+
+        cmd += [
+            "-r",
+            "__node:=cf{}".format(id),
         ]
 
-    def _load_paths_and_directories(self):
-        self._webots_home = get_package_prefix("webots_ros2_driver")
+        return cmd
 
-        self._webots_controller_path = (
-            get_package_share_directory("webots_ros2_driver")
-            + "/scripts/webots-controller"
-        )
+    @property
+    def _webots_port(self) -> str:
+        return self.get_parameter("webots_port").get_parameter_value().integer_value
+    @property
+    def _use_tcp(self) -> bool:
+        return self.get_parameter("webots_use_tcp").get_parameter_value().bool_value
+    @property
+    def _webots_ip(self) -> str:
+        return self.get_parameter("webots_tcp_ip").get_parameter_value().string_value
 
-        self._webots_ip = EnvironmentVariable(
-            "WEBOTS_IP", default_value="127.0.0.1"
-        ).perform(LaunchContext())
-
-        self._webots_port = EnvironmentVariable(
-            "WEBOTS_PORT", default_value="1234"
-        ).perform(LaunchContext())
-
-        self._cf_description_path = os.path.join(
-            get_package_share_directory("crazyflie_webots"), "resource", "cf.urdf"
-        )
 
     def _add_crazyflie_callback(
         self, req: WebotsCrazyflie.Request, resp: WebotsCrazyflie.Response
     ) -> WebotsCrazyflie.Response:
         try:
             resp.success = self.add_crazyflie(req.id)
+            if not resp.success:
+                resp.msg = "See crazyflie log for details."
+                self.remove_crazyflie(req.id)
         except (TimeoutError, Gateway) as ex:
-            self._logger.info(str(ex))
+            self.remove_crazyflie(req.id)
             resp.success = False
+            resp.msg = str(ex)
         return resp
 
     def _remove_crazyflie_callback(
@@ -166,6 +219,75 @@ class Gateway(Node):
     ) -> WebotsCrazyflie.Response:
         resp.success, _msg = self.remove_crazyflie(req.id)
         return resp
+    
+    def _wait_for_change_state_service(
+        self, key: int, timeout: float
+    ) -> bool:
+        while timeout > 0.0:
+            if (
+                key in self.crazyflies.keys()
+                and self.crazyflies[key].change_state.service_is_ready()
+            ):
+                return True
+
+            time.sleep(0.02)
+            timeout -= 0.02
+        return False
+
+    def _wait_for_get_state_service(self, key: int, timeout: float) -> bool:
+        while timeout > 0.0:
+            if (
+                key in self.crazyflies.keys()
+                and self.crazyflies[key].get_state.service_is_ready()
+            ):
+                return True
+
+            time.sleep(0.02)
+            timeout -= 0.02
+        return False
+
+    def _transition_crazyflie(
+        self, cf_id: int, state: LifecycleState, label: str
+    ) -> bool:
+        request = ChangeState.Request()
+        request.transition.id = state
+        request.transition.label = label
+        if cf_id in self.crazyflies.keys():
+            self._wait_for_change_state_service(cf_id, 0.2)
+            fut = self.crazyflies[cf_id].change_state.call_async(request)
+            timeout = 0.0
+            while not fut.done() and timeout < 10.0:
+                rclpy.spin_until_future_complete(node=self, future=fut, timeout_sec=0.1)
+                if not self._wait_for_change_state_service(cf_id, 0.1):
+                    raise TimeoutError("Crazyflie died during transition.")
+                timeout += 0.1
+
+            if fut.done():
+                response: Optional[ChangeState.Response] = fut.result()
+                response: ChangeState.Response
+                return response.success
+
+            raise TimeoutError("Service call for transition timed out.")
+        else:
+            raise GatewayError(
+                f"Crazyflie with id: {cf_id} not available."
+            )
+
+    def _get_state(self, cf_id: int) -> Optional[LifecycleState]:
+        request = GetState.Request()
+        if cf_id in self.crazyflies.keys():
+            self._wait_for_get_state_service(cf_id, 0.2)
+            fut: Future = self.crazyflies[cf_id].get_state.call_async(
+                request
+            )
+            rclpy.spin_until_future_complete(node=self, future=fut, timeout_sec=1.0)
+            response: Optional[GetState.Response] = fut.result()
+            if fut.done():
+                response: GetState.Response
+                return response.current_state
+            else:
+                raise TimeoutError("Service call for getting the state timed out.")
+
 
 
 async def run_node(cf_eventloop):
@@ -175,11 +297,14 @@ async def run_node(cf_eventloop):
         while rclpy.ok():
             await asyncio.sleep(0.01)
             rclpy.spin_once(gateway, timeout_sec=0)
+        print("Shutting down gateway...")
         rclpy.shutdown()
-    except asyncio.CancelledError:
+    except (asyncio.CancelledError, asyncio.exceptions.CancelledError, ExternalShutdownException):
+        print("Shutting down gateway...this ways")   
         gateway.remove_all_crazyflies()
-    rclpy.try_shutdown()
-
+        print("All crazyflies removed.")
+        rclpy.spin_once(gateway, timeout_sec=1.0)
+        rclpy.shutdown()
 
 def run_crazyflie_loop(event_loop: asyncio.AbstractEventLoop):
     asyncio.set_event_loop(event_loop)
@@ -224,6 +349,18 @@ def main():
     crazyflie_thread.start()
     gateway_thread.start()
 
+    #is_running = True
+    #def handle_sigint(signum, frame):
+    #    nonlocal is_running
+    #    is_running = False
+    #    crazyflie_event_loop.call_soon_threadsafe(crazyflie_event_loop.stop)
+    #    gateway_event_loop.call_soon_threadsafe(gateway_event_loop.stop)
+#
+    #signal.signal(signal.SIGINT, handle_sigint) 
+    #signal.signal(signal.SIGTERM, exit())
+    #while is_running:
+    #    time.sleep(0.5)
+    
     try:
         while True:
             time.sleep(0.5)

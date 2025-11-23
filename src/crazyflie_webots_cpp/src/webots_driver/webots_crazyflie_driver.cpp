@@ -2,7 +2,7 @@
 #include <cstdio>
 #include <iostream>
 
-WebotsCrazyflieDriver::WebotsCrazyflieDriver(int id, const std::string &webots_port, bool webots_use_tcp, const std::string &webots_tcp_ip)
+WebotsCrazyflieDriver::WebotsCrazyflieDriver(int id, int webots_port, bool webots_use_tcp, const std::string &webots_tcp_ip)
       : WebotsRobotDriver("cf" + std::to_string(id), webots_port, webots_use_tcp, webots_tcp_ip) 
       ,m_id(id)
 {
@@ -22,7 +22,8 @@ WebotsCrazyflieDriver::WebotsCrazyflieDriver(int id, const std::string &webots_p
     m_zranger = wb_robot_get_device("range");
     wb_distance_sensor_enable(m_zranger, static_cast<int>(get_time_step()));
 
-    m_target = {wb_gps_get_values(m_gps)[0], wb_gps_get_values(m_gps)[1], wb_gps_get_values(m_gps)[2]};
+    Eigen::Vector3d pos = get_robot_pose().translation();
+    m_target = {pos.x(), pos.y(), pos.z()};
     
     m_past_time = wb_robot_get_time();
 }
@@ -35,22 +36,23 @@ WebotsCrazyflieDriver::step()
     // Controller of Crazyflie in Webots using a PI controller to reach target position
     // Step the simulation and then read the sensors, compute control and send actuators commands
     if (!WebotsRobotDriver::step()) return false;
-
+    return true;
 
     double Kp = 1.0; // Proportional gain
     double Ki = 0.1; // Integral gain
     
     const double dt = wb_robot_get_time() - m_past_time;
     // Get measurements
-    double x_global = wb_gps_get_values(m_gps)[0];
-    double y_global = wb_gps_get_values(m_gps)[1];
-    double z_global = wb_gps_get_values(m_gps)[2];
-   
+    Eigen::Vector3d pos = get_robot_pose().translation();
+    double x_global = pos.x();
+    double y_global = pos.y();
+    double z_global = pos.z();
+    
     // Get target 
     double target_x = m_target[0];
     double target_y = m_target[1];
     double target_z = m_target[2];
-    
+
     // Calculate Error
     double forward_error = target_x - x_global;
     double sideways_error = target_y - y_global;

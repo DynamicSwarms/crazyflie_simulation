@@ -6,7 +6,7 @@
 class WebotsWandDriver : public WebotsRobotDriver
 {
 public:
-    WebotsWandDriver(int id, const std::string &webots_port, bool webots_use_tcp, const std::string &webots_tcp_ip);
+    WebotsWandDriver(int id, const int webots_port, bool webots_use_tcp, const std::string &webots_tcp_ip);
 
     bool step() override;
 private: 

@@ -1,7 +1,9 @@
 #include "crazyflie_webots_cpp/webots_driver/webots_robot_driver.hpp"
 #include <iostream>
+#include <thread>      // for std::thread and std::this_thread::sleep_for
+#include <chrono>      // for std::chrono::steady_clock and durations
 
-WebotsRobotDriver::WebotsRobotDriver(const std::string robot_name, const std::string &webots_port, bool webots_use_tcp, const std::string &webots_tcp_ip)
+WebotsRobotDriver::WebotsRobotDriver(const std::string robot_name, int webots_port, bool webots_use_tcp, const std::string &webots_tcp_ip)
       : m_robot_name(robot_name)
       , m_webots_port(webots_port)
       , m_webots_use_tcp(webots_use_tcp)
@@ -9,13 +11,36 @@ WebotsRobotDriver::WebotsRobotDriver(const std::string robot_name, const std::st
 {
     std::string url;
     if (m_webots_use_tcp) {
-        url = "tcp://" + m_webots_tcp_ip + ":" + m_webots_port + "/" + robot_name;
+        url = "tcp://" + m_webots_tcp_ip + ":" + std::to_string(m_webots_port) + "/" + robot_name;
     } else {
-        url = "ipc://" + m_webots_port + "/" + robot_name;
+        url = "ipc://" + std::to_string(m_webots_port) + "/" + robot_name;
     }
     setenv("WEBOTS_CONTROLLER_URL", url.c_str(), 1);
 
-    wb_robot_init();
+    std::cerr << "Connecting to Webots robot with URL: " << url << std::endl;
+
+    auto start = std::chrono::steady_clock::now();
+    const auto timeout = std::chrono::seconds(5);
+
+    bool init_success = false;
+    std::thread initThread([&](){
+        wb_robot_init();
+        init_success = true;
+    });
+    while (std::chrono::steady_clock::now() - start < timeout) {
+        if (init_success) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    if (!init_success) {
+        m_connected = false;
+        initThread.detach(); // let the thread clean up itself
+        throw WebotsInitException("Webots robot initialization timeout");
+    } else {
+        initThread.join();
+        // continue normally
+    }
+
+
     m_connected = true;
     m_time_step = wb_robot_get_basic_time_step();
 
@@ -28,7 +53,10 @@ WebotsRobotDriver::WebotsRobotDriver(const std::string robot_name, const std::st
 
 WebotsRobotDriver::~WebotsRobotDriver()
 {
-    if (m_connected) wb_robot_cleanup();
+    if (m_connected) 
+    {
+        wb_robot_cleanup();
+    }
 }
 
 bool

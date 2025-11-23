@@ -1,7 +1,7 @@
 #include "crazyflie_webots_cpp/webots_driver/webots_wand_driver.hpp"
 #include <iostream>
 
-WebotsWandDriver::WebotsWandDriver(int id, const std::string &webots_port, bool webots_use_tcp, const std::string &webots_tcp_ip)
+WebotsWandDriver::WebotsWandDriver(int id, int webots_port, bool webots_use_tcp, const std::string &webots_tcp_ip)
     : WebotsRobotDriver("Wand0" + std::to_string(id), webots_port, webots_use_tcp, webots_tcp_ip)
     , m_id(id)
 {

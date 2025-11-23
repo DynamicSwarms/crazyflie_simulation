@@ -8,10 +8,18 @@
 
 #include <Eigen/Dense>
 
+#include <stdexcept>
+
+class WebotsInitException : public std::runtime_error {
+public:
+    explicit WebotsInitException(const std::string &msg)
+        : std::runtime_error(msg) {}
+};
+
 class WebotsRobotDriver
 {
 public:
-    WebotsRobotDriver(const std::string robot_name, const std::string &webots_port, bool webots_use_tcp, const std::string &webots_tcp_ip);   
+    WebotsRobotDriver(const std::string robot_name, int webots_port, bool webots_use_tcp, const std::string &webots_tcp_ip);   
     virtual ~WebotsRobotDriver();
 
     virtual bool step();
@@ -21,9 +29,10 @@ public:
 
     Eigen::Affine3d get_robot_pose();
 
+    bool is_connected() const { return m_connected; }
 private:
     std::string m_robot_name;
-    std::string m_webots_port;
+    int m_webots_port;
     bool m_webots_use_tcp;
     std::string m_webots_tcp_ip;
 
