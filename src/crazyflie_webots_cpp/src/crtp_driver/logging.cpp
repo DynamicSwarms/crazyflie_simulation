@@ -1,6 +1,9 @@
 #include "crazyflie_webots_cpp/crtp_driver/logging.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 
+#include <Eigen/Dense>
+
+
 using std::placeholders::_1;
 
 #define STATE_BLOCK_ID 0
@@ -12,7 +15,11 @@ Logging::Logging(
     std::shared_ptr<rclcpp::node_interfaces::NodeLoggingInterface> node_logging_interface,
     std::shared_ptr<rclcpp::node_interfaces::NodeTimersInterface> node_timers_interface,
     std::shared_ptr<WebotsCrazyflieDriver> webots_driver)
-: m_logging_interface(node_logging_interface)
+
+: m_base_interface(node_base_interface)
+, m_topics_interface(node_topics_interface)
+, m_logging_interface(node_logging_interface)
+, m_timers_interface(node_timers_interface)
 , m_webots_driver(webots_driver)
 , m_callback_group(node_base_interface->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive))
 {
@@ -31,6 +38,13 @@ Logging::Logging(
         "~/get_logging_toc_info",
         10,
         std::bind(&Logging::get_toc_info_callback, this, _1),
+        sub_opt);
+
+    m_create_log_block_sub = rclcpp::create_subscription<crazyflie_interfaces::msg::LogBlock>(
+        node_topics_interface,
+        "~/create_log_block",
+        10,
+        std::bind(&Logging::m_create_log_block, this, _1),
         sub_opt);
     
     m_publish_state_timer = rclcpp::create_wall_timer(
@@ -51,7 +65,7 @@ Logging::Logging(
         publisher_options
     );
 
-    RCLCPP_INFO(node_logging_interface->get_logger(), "Logging  initialized");
+    RCLCPP_DEBUG(node_logging_interface->get_logger(), "Logging  initialized");
 }
 
 
@@ -64,6 +78,92 @@ void Logging::download_toc_callback(const std_msgs::msg::Empty::SharedPtr msg)
 void Logging::get_toc_info_callback(const std_msgs::msg::Empty::SharedPtr msg)
 {
     RCLCPP_INFO(m_logging_interface->get_logger(), "Getting logging TOC info");
+}
+
+void Logging::m_create_log_block(const crazyflie_interfaces::msg::LogBlock::SharedPtr msg)
+{
+    std::vector<std::string> variables = msg->variables;
+    std::string name = msg->name;
+
+    if (m_log_blocks.count(name)) {
+        RCLCPP_INFO(m_logging_interface->get_logger(), "Log block with name '%s' already exists.", name.c_str());
+        return;
+    }
+
+    auto log_block = std::make_shared<LogBlock>(
+        m_base_interface,
+        m_topics_interface,
+        m_logging_interface,
+        m_timers_interface,
+        m_callback_group,
+        name,
+        std::bind(&Logging::m_get_data_callback, this, std::placeholders::_1)
+    );
+    m_log_blocks[name] = log_block;
+    m_log_block_variables[name] = variables;
+
+    RCLCPP_INFO(m_logging_interface->get_logger(), "Creating log block with name: %s", msg->name.c_str());
+}
+std::vector<double>  
+Logging::m_get_data_callback(const std::string &block_name)
+{
+    std::vector<double> data;
+    if (auto webots_driver = m_webots_driver.lock()) {
+        if (!m_log_block_variables.count(block_name)) {
+            RCLCPP_WARN(m_logging_interface->get_logger(), "Requested data for unknown log block: %s", block_name.c_str());
+            return data;
+        }
+
+        Eigen::Affine3d pose = webots_driver->get_robot_pose();
+        Eigen::Quaterniond q(pose.rotation());
+
+        std::vector<std::string> variables = m_log_block_variables[block_name];
+        for (const auto &var : variables) {
+            
+            if (var == "range.front") {
+                data.push_back(webots_driver->get_range_front());
+            } else if (var == "range.back") {
+                data.push_back(webots_driver->get_range_back());
+            } else if (var == "range.up") {
+                data.push_back(webots_driver->get_range_up());
+            } else  if (var == "range.left") {
+                data.push_back(webots_driver->get_range_left());
+            } else  if (var == "range.right") {
+                data.push_back(webots_driver->get_range_right());
+            } else if (var == "range.zrange") {
+                data.push_back(webots_driver->get_range_zrange());
+            } else if (var == "stateEstimate.x") {
+                data.push_back(pose.translation().x());
+            } else if (var == "stateEstimate.y") {
+                data.push_back(pose.translation().y());
+            } else if (var == "stateEstimate.z") {
+                data.push_back(pose.translation().z());
+            } else if (var == "stateEstimate.yaw") {
+                // Extract yaw from rotation matrix
+                Eigen::Matrix3d rotation = pose.rotation();
+                double yaw = atan2(rotation(1,0), rotation(0,0));
+                data.push_back(yaw);
+            } else if (var == "stateEstimate.qx") {
+                data.push_back(q.x());
+            } else if (var == "stateEstimate.qy") {
+                data.push_back(q.y());
+            } else if (var == "stateEstimate.qz") {
+                data.push_back(q.z());
+            } else if (var == "stateEstimate.qw") {
+                data.push_back(q.w());
+            } else if (var == "pm.vbat") {
+                data.push_back(webots_driver->get_battery_voltage());
+            } else if (var == "pm.chargeCurrent") {
+                data.push_back(webots_driver->get_charge_current());
+            } else if (var == "pm.state") {
+                data.push_back(webots_driver->get_charge_state());
+            } else {
+                RCLCPP_WARN(m_logging_interface->get_logger(), "Unknown variable requested: %s", var.c_str());
+                data.push_back(0.0);
+            }
+        }
+    }
+    return data;
 }
 
 void

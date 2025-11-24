@@ -29,7 +29,7 @@ GenericCommander::GenericCommander(
         std::bind(&GenericCommander::cmd_position_callback, this, _1),
         sub_opt);
         
-    RCLCPP_INFO(node_logging_interface->get_logger(), "Generic Commander initialized");
+    RCLCPP_DEBUG(node_logging_interface->get_logger(), "Generic Commander initialized");
 };
 
 void GenericCommander::notify_setpoints_stop_callback(const crazyflie_interfaces::msg::NotifySetpointsStop::SharedPtr msg)

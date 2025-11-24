@@ -67,6 +67,7 @@ set(CRTP_DRIVER_SRC
   src/crtp_driver/hl_commander.cpp
   src/crtp_driver/localization.cpp
   src/crtp_driver/logging.cpp
+  src/crtp_driver/logblock.cpp
   src/crtp_driver/parameters.cpp)
 add_library(crtp_driver_lib ${CRTP_DRIVER_SRC})
 set_target_properties(crtp_driver_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)

@@ -3,6 +3,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include "lifecycle_msgs/msg/transition_event.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
+#include "rclcpp_lifecycle/transition.hpp"
 
 #include "crazyflie_webots_cpp/crtp_driver/console.hpp"
 #include "crazyflie_webots_cpp/crtp_driver/generic_commander.hpp"
@@ -12,7 +13,6 @@
 #include "crazyflie_webots_cpp/crtp_driver/parameters.hpp"
 
 #include "crazyflie_webots_cpp/webots_driver/webots_crazyflie_driver.hpp"
-
 
 class Crazyflie : public rclcpp_lifecycle::LifecycleNode
 {
@@ -70,7 +70,23 @@ class Crazyflie : public rclcpp_lifecycle::LifecycleNode
         std::bind(&Crazyflie::webots_step_timer_callback, this),
         m_webots_callback_group);
 
-        std::cerr << "Initialized CrazyflieWebotsDriver." << std::endl;
+      m_configure_callback_group = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+      m_configure_timer = this->create_wall_timer(
+        std::chrono::milliseconds(200),
+        [this]() {
+          // Sadly this has to be done like this because when many crazyflies are started at once,
+          // some of them miss the configure transition event subscription 
+          // This adds an additional delay before configuring to ensure the subscription is active
+          while (!this->get_node_graph_interface()->count_subscribers("~/transition_event")) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          }
+          std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+          this->trigger_transition(lifecycle_msgs::msg::Transition::TRANSITION_CONFIGURE);//this->configure();
+          m_configure_timer->cancel();
+        },
+        m_configure_callback_group);
+
+      RCLCPP_INFO(get_logger(), "CrazyflieWebots node initialized.");
     }
 
 
@@ -78,8 +94,8 @@ class Crazyflie : public rclcpp_lifecycle::LifecycleNode
   {
     if (m_wb_driver) {
       if (!m_wb_driver->step()) {
-
         m_wb_driver.reset();
+        RCLCPP_INFO(get_logger(), "Webots simulation ended, shutting down Crazyflie node.");
         this->shutdown();
         
       }
@@ -88,32 +104,24 @@ class Crazyflie : public rclcpp_lifecycle::LifecycleNode
   ~Crazyflie()
   { 
 
-    std::cerr << "Cleaning up CrazyflieWebotsDriver." << std::endl;
     m_webots_step_timer->cancel();
     m_webots_step_timer.reset();
-    std::cerr << "Cleaning up WebotsCrazyflieDriver." << std::endl;
     m_wb_driver.reset();
-    std::cerr << "Cleaning up CRTP modules." << std::endl;
     m_console.reset();
-    std::cerr << "Cleaning up GenericCommander." << std::endl;
-    //m_generic_commander.reset();
-    std::cerr << "Cleaning up HighLevelCommander." << std::endl;
+    m_generic_commander.reset();
     m_hl_commander.reset();
-    std::cerr << "Cleaning up Localization." << std::endl;
     m_localization.reset();
-    std::cerr << "Cleaning up Logging." << std::endl;
     m_logging.reset();
-    std::cerr << "Cleaning up Parameters." << std::endl;
     m_parameters.reset();
-    std::cerr << "Cleaned up CrazyflieWebotsDriver." << std::endl;
   } 
 
      /**
    * Lifecycle callbacks.
    */
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
-  on_configure(const rclcpp_lifecycle::State &)
+  on_configure(const rclcpp_lifecycle::State &state)
   {
+    LifecycleNode::on_configure(state);
     //if (this->init())
     //{
     //  RCLCPP_INFO(get_logger(), "Successfully configured!");
@@ -124,14 +132,16 @@ class Crazyflie : public rclcpp_lifecycle::LifecycleNode
     //  RCLCPP_DEBUG(get_logger(), "Configuring failed!");
     //  return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::FAILURE;
     //}
-  return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
+    RCLCPP_DEBUG(get_logger(), "on_configure() is called.");
+   
+    return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
   }
 
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
   on_activate(const rclcpp_lifecycle::State &state)
   {
     LifecycleNode::on_activate(state);
-    RCUTILS_LOG_INFO_NAMED(get_name(), "on_activate() is called.");
+    RCLCPP_INFO(get_logger(), "on_activate() is called.");
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
   }
 
@@ -154,7 +164,6 @@ class Crazyflie : public rclcpp_lifecycle::LifecycleNode
   on_shutdown(const rclcpp_lifecycle::State &state)
   {
     RCLCPP_DEBUG(get_logger(), "Shutting down cleanly.");
-    std::cerr << "Shutting down cleanly." << std::endl; 
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
   }
 
@@ -170,6 +179,9 @@ class Crazyflie : public rclcpp_lifecycle::LifecycleNode
 
     std::shared_ptr<rclcpp::CallbackGroup> m_webots_callback_group;
     std::shared_ptr<rclcpp::TimerBase> m_webots_step_timer;
+
+    std::shared_ptr<rclcpp::CallbackGroup> m_configure_callback_group;
+    std::shared_ptr<rclcpp::TimerBase> m_configure_timer;
 
     std::shared_ptr<WebotsCrazyflieDriver> m_wb_driver;
 
@@ -201,8 +213,6 @@ int main(int argc, char **argv)
   while (rclcpp::ok() &&  !(node->get_current_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_FINALIZED)) executor.spin_some();
   executor.remove_node(node->get_node_base_interface());
   rclcpp::shutdown();
-
-  std::cerr << "Crazyflie node shut down cleanly." << std::endl;
   return 0;
 }
 

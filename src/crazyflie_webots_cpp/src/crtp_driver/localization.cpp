@@ -30,7 +30,7 @@ Localization::Localization(
     );
 
 
-    RCLCPP_INFO(node_logging_interface->get_logger(), "Localization initialized");
+    RCLCPP_DEBUG(node_logging_interface->get_logger(), "Localization initialized");
 }
 
 void

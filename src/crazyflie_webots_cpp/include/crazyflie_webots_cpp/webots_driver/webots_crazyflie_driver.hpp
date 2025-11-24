@@ -25,6 +25,14 @@ public:
 
     void set_target(Eigen::Vector3d target, double yaw_deg);
 
+    double get_range_front();
+    double get_range_back();
+    double get_range_up();
+    double get_range_left();
+    double get_range_right();
+    double get_range_zrange();
+
+
     double get_battery_voltage();
     double get_charge_current();
     double get_charge_state();
@@ -48,7 +56,14 @@ private:
 
     WbDeviceTag m_gps;
 
+    WbDeviceTag m_ranger_front;
+    WbDeviceTag m_ranger_back;
+    //WbDeviceTag m_ranger_up;
+    WbDeviceTag m_ranger_left;
+    WbDeviceTag m_ranger_right;
     WbDeviceTag m_zranger; 
+
+    
 
     // Initialize error accumulators
     double m_forward_integral = 0.0;

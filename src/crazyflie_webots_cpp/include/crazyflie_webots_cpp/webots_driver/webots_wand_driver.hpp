@@ -1,6 +1,8 @@
 #pragma once
 #include "crazyflie_webots_cpp/webots_driver/webots_robot_driver.hpp"
 
+#define WB_ALLOW_MIXING_C_AND_CPP_API
+
 #include <webots/keyboard.h>
 
 class WebotsWandDriver : public WebotsRobotDriver

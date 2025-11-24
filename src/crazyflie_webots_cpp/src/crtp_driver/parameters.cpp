@@ -28,7 +28,7 @@ Parameters::Parameters(
         std::bind(&Parameters::get_toc_info_callback, this, _1),
         sub_opt);
 
-    RCLCPP_INFO(node_logging_interface->get_logger(), "Parameters  initialized");
+    RCLCPP_DEBUG(node_logging_interface->get_logger(), "Parameters  initialized");
 }
 
 void Parameters::initialize_parameters()

@@ -6,8 +6,9 @@
 
 #include "crazyflie_webots_cpp/webots_driver/webots_wand_driver.hpp"
 
-#include "tf2_ros/transform_broadcaster.h"
+#include "tf2_msgs/msg/tf_message.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
+#include "tf2_ros/qos.hpp"
 
 
 class Wand : public rclcpp_lifecycle::LifecycleNode
@@ -21,62 +22,71 @@ class Wand : public rclcpp_lifecycle::LifecycleNode
     , m_webots_tcp_ip(declare_parameter("webots_tcp_ip", rclcpp::ParameterValue("127.0.0.1"), rcl_interfaces::msg::ParameterDescriptor().set__read_only(true)).get<std::string>())
     , m_wb_driver(std::make_shared<WebotsWandDriver>(m_id, m_webots_port, m_webots_use_tcp, m_webots_tcp_ip))
     {
-      m_tf_broadcaster = std::make_unique<tf2_ros::TransformBroadcaster>(this);
+      // We would like to use tf2_ros::TransformBroadcaster but it seems to have issues with lifecycle nodes -> crashes
+      m_tf_callback_group = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+      auto publisher_options = rclcpp::PublisherOptions();
+      m_tf_publisher = this->create_publisher<tf2_msgs::msg::TFMessage>("/tf", tf2_ros::DynamicBroadcasterQoS(), publisher_options);
+      
       m_tf_timer = this->create_wall_timer(std::chrono::milliseconds(50),
-        std::bind(&Wand::broadcast_tf, this));
+        std::bind(&Wand::broadcast_tf, this),
+        m_tf_callback_group);
 
-      m_webots_callback_group = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-      m_webots_step_timer = this->create_wall_timer(
-        std::chrono::microseconds(static_cast<long long>(m_wb_driver->get_time_step() * 1000.0)),
-        [this]() {
-          if (m_wb_driver) {
-            if (!m_wb_driver->step()) {
-
-              std::cerr << "Webots controller disconnected, cleaning up CrazyflieWebotsDriver." << std::endl;
-              m_wb_driver.reset();
-              this->shutdown();
-            }
-          }
-        });
+     m_webots_callback_group = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+     m_webots_step_timer = this->create_wall_timer(
+       std::chrono::microseconds(static_cast<long long>(m_wb_driver->get_time_step() * 1000.0)),
+       std::bind(&Wand::webots_step_timer_callback, this),
+       m_webots_callback_group);
     }
 
-  void broadcast_tf()
+  void webots_step_timer_callback()
   {
-    if (!m_wb_driver || !m_tf_broadcaster) return;
+    if (m_wb_driver) {
+      if (!m_wb_driver->step()) {
+        m_wb_driver.reset();
+        this->shutdown();
+      }
+    }
+  }
+
+  ~Wand()
+  {
+    m_tf_publisher.reset();
+    m_webots_step_timer->cancel();
+    m_webots_step_timer.reset();
+    m_wb_driver.reset();
+  }
+
+  void broadcast_tf()
+  { 
+    if (!m_wb_driver || !m_tf_publisher) return;  
     Eigen::Affine3d pose = m_wb_driver->get_robot_pose();    
-
-    geometry_msgs::msg::TransformStamped transformStamped;
-    transformStamped.header.stamp = this->now();
-    transformStamped.header.frame_id = "world";
-    transformStamped.child_frame_id = m_wb_driver->get_robot_name();
-    transformStamped.transform.translation.x = pose.translation().x();
-    transformStamped.transform.translation.y = pose.translation().y();
-    transformStamped.transform.translation.z = pose.translation().z();
-    Eigen::Quaterniond q(pose.linear());
-    transformStamped.transform.rotation.x = q.x();
-    transformStamped.transform.rotation.y = q.y();
-    transformStamped.transform.rotation.z = q.z();
+    
+    geometry_msgs::msg::TransformStamped transformStamped; 
+    transformStamped.header.stamp = this->now();  
+    transformStamped.header.frame_id = "world";  
+    transformStamped.child_frame_id = m_wb_driver->get_robot_name(); 
+    transformStamped.transform.translation.x = pose.translation().x();  
+    transformStamped.transform.translation.y = pose.translation().y(); 
+    transformStamped.transform.translation.z = pose.translation().z();  
+    
+    Eigen::Quaterniond q(pose.linear()); 
+    transformStamped.transform.rotation.x = q.x();  
+    transformStamped.transform.rotation.y = q.y(); 
+    transformStamped.transform.rotation.z = q.z();  
     transformStamped.transform.rotation.w = q.w();
-
-    m_tf_broadcaster->sendTransform(transformStamped);
+    
+    tf2_msgs::msg::TFMessage tf_message;
+    tf_message.transforms.push_back(transformStamped);
+    m_tf_publisher->publish(tf_message);
   }
 
   /**
    * Lifecycle callbacks.
    */
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
-  on_configure(const rclcpp_lifecycle::State &)
+  on_configure(const rclcpp_lifecycle::State &state)
   {
-    //if (this->init())
-    //{
-    //  RCLCPP_INFO(get_logger(), "Successfully configured!");
-    //  return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
-    //}
-    //else
-    //{
-    //  RCLCPP_DEBUG(get_logger(), "Configuring failed!");
-    //  return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::FAILURE;
-    //}
+
   return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
   }
 
@@ -118,39 +128,19 @@ class Wand : public rclcpp_lifecycle::LifecycleNode
     bool m_webots_use_tcp; 
     std::string m_webots_tcp_ip; 
 
+    std::shared_ptr<WebotsWandDriver> m_wb_driver;
+
+  private: 
+
 
     std::shared_ptr<rclcpp::CallbackGroup> m_webots_callback_group;
     std::shared_ptr<rclcpp::TimerBase> m_webots_step_timer;
 
-    std::unique_ptr<tf2_ros::TransformBroadcaster> m_tf_broadcaster;
+    std::shared_ptr<rclcpp::Publisher<tf2_msgs::msg::TFMessage>> m_tf_publisher;
+    std::shared_ptr<rclcpp::CallbackGroup> m_tf_callback_group;
     std::shared_ptr<rclcpp::TimerBase> m_tf_timer;
 
-    std::shared_ptr<WebotsWandDriver> m_wb_driver;
 };
-
-//int main(int argc, char **argv)
-//{
-//  //rclcpp::init(argc, argv);
-//  // Initialize Webots API
-////  setenv("WEBOTS_CONTROLLER_URL", "ipc://1234/cf1", 1);
-//  setenv("WEBOTS_CONTROLLER_URL", "tcp://127.0.0.1:1234/cf1", 1);
-//
-//  wb_robot_init();
-//
-//  printf("hello world webots_cpp package\n");
-//
-//  const char* name = wb_robot_get_name();
-//  std::cerr << name << " <-- name here" << std::endl;
-//
-//  // Main control loop (needed, otherwise controller exits immediately)
-//  while (wb_robot_step(32) != -1) {
-//    // Do stuff here
-//  }
-//
-//  wb_robot_cleanup();
-//  return 0;
-//}
-
 
 int main(int argc, char **argv)
 {
@@ -159,7 +149,15 @@ int main(int argc, char **argv)
 
   rclcpp::init(argc, argv);
   rclcpp::NodeOptions options;
-  auto node = std::make_shared<Wand>(options);
+  std::shared_ptr<Wand> node;
+  try {
+    node = std::make_shared<Wand>(options);
+  } catch (const WebotsInitException &e) {
+    std::cerr << "Failed to initialize Wand node: " << e.what() << std::endl;
+    rclcpp::shutdown();
+    return 1;
+  }
+
   rclcpp::executors::MultiThreadedExecutor executor;
   executor.add_node(node->get_node_base_interface());
   while (rclcpp::ok() &&  !(node->get_current_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_FINALIZED)) executor.spin_some();

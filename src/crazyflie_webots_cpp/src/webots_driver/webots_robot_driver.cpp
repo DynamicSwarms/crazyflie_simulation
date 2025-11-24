@@ -17,10 +17,10 @@ WebotsRobotDriver::WebotsRobotDriver(const std::string robot_name, int webots_po
     }
     setenv("WEBOTS_CONTROLLER_URL", url.c_str(), 1);
 
-    std::cerr << "Connecting to Webots robot with URL: " << url << std::endl;
+    // std::cerr << "Connecting to Webots robot with URL: " << url << std::endl;
 
     auto start = std::chrono::steady_clock::now();
-    const auto timeout = std::chrono::seconds(5);
+    const auto timeout = std::chrono::seconds(15);
 
     bool init_success = false;
     std::thread initThread([&](){
@@ -34,7 +34,7 @@ WebotsRobotDriver::WebotsRobotDriver(const std::string robot_name, int webots_po
     if (!init_success) {
         m_connected = false;
         initThread.detach(); // let the thread clean up itself
-        throw WebotsInitException("Webots robot initialization timeout");
+        throw WebotsInitException("Webots robot initialization timeout after 15 seconds. Is Webots running with the correct robot?");
     } else {
         initThread.join();
         // continue normally
@@ -48,7 +48,7 @@ WebotsRobotDriver::WebotsRobotDriver(const std::string robot_name, int webots_po
     m_position_field = wb_supervisor_node_get_field(m_robot_node, "translation");
     m_rotation_field = wb_supervisor_node_get_field(m_robot_node, "rotation");
 
-    std::cerr << "Connected to robot in simulation: " << robot_name << std::endl;    
+    // std::cerr << "Connected to robot in simulation: " << robot_name << std::endl;    
 }
 
 WebotsRobotDriver::~WebotsRobotDriver()

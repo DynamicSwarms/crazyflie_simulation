@@ -7,6 +7,13 @@
 
 #include "crazyflie_webots_gateway_cpp/crazyflie_lifecycle_client.hpp"
 
+
+#include "signal.h"
+
+
+std::atomic_bool sigint_received(false);
+std::atomic_bool gateway_shutdown_done(false);
+
 class Gateway : public rclcpp::Node
 {
 public:
@@ -18,39 +25,72 @@ public:
     {
       m_lifecycle_client_callback_group = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
+
+      auto service_qos = rmw_qos_profile_services_default;
+      service_qos.depth = 100; // This way it is possible to queue up multiple add requestst
+      m_gateway_callback_group = this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
       m_add_crazyflie_service = this->create_service<crazyflie_webots_gateway_interfaces::srv::WebotsCrazyflie>(
         "~/add_crazyflie",
-        std::bind(&Gateway::add_crazyflie_callback, this, std::placeholders::_1, std::placeholders::_2));
+        std::bind(&Gateway::add_crazyflie_callback, this, std::placeholders::_1, std::placeholders::_2),
+        service_qos,
+        m_gateway_callback_group);
       
       m_remove_crazyflie_service = this->create_service<crazyflie_webots_gateway_interfaces::srv::WebotsCrazyflie>(
         "~/remove_crazyflie",
-        std::bind(&Gateway::remove_crazyflie_callback, this, std::placeholders::_1, std::placeholders::_2));
+        std::bind(&Gateway::remove_crazyflie_callback, this, std::placeholders::_1, std::placeholders::_2),
+        service_qos,
+        m_gateway_callback_group);
     
     
-      m_check_crazyflie_processes_timer = this->create_wall_timer(std::chrono::milliseconds(500),
-        std::bind(&Gateway::check_crazyflie_processes, this));
+      m_check_crazyflie_processes_timer = this->create_wall_timer(std::chrono::milliseconds(100),
+        std::bind(&Gateway::check_crazyflie_processes, this),
+        m_gateway_callback_group);
+
+      RCLCPP_INFO(this->get_logger(), "CrazyflieWebotsGateway node initialized.");
     }
 
-    ~Gateway()
-    {
-      std::lock_guard<std::mutex> lock(m_crazyflie_processes_mutex);
+    ~Gateway(){}
 
-      std::cerr << "Shutting down CrazyflieWebotsGateway..." << std::endl;
-      // Clean up all crazyflie processes
-      for (auto &pair : m_crazyflie_processes)
-      {
-          bool success = std::get<1>(pair.second)->shutdown_crazyflie_sync(std::chrono::milliseconds(100));
-          if (!success)
-          {
-              std::cerr << "Shutdown of crazyflie " << pair.first << " timed out. Killing process." << std::endl;
-              pid_t pid = std::get<0>(pair.second);
-              kill(-pid, SIGKILL); //Kill the whole process group
-          }
-          //pid_t pid = std::get<0>(pair.second);
-          //kill(-pid, SIGINT); //Kill the whole process group
-      }
-      std::cerr << "CrazyflieWebotsGateway shut down cleanly." << std::endl;
-    }
+
+    // void shutdown()
+    // {
+    //   std::unique_lock<std::mutex> lock(m_crazyflie_processes_mutex);
+    //   RCLCPP_INFO(this->get_logger(), "Shutting down CrazyflieWebotsGateway...");
+// 
+    //   for (auto &pair : m_crazyflie_processes)
+    //   {
+    //       int id = pair.first;
+    //       std::shared_ptr<CrazyflieLifecycleClient> cf_client = std::get<1>(pair.second);
+    //       RCLCPP_INFO(this->get_logger(), "Shutting down crazyflie %d...", id);
+    //       cf_client->shutdown_crazyflie_async();
+    //   }
+// 
+    //   lock.unlock();
+// 
+    //   RCLCPP_INFO(this->get_logger(), "Waiting for crazyflie processes to exit...");
+    //   std::chrono::time_point<std::chrono::steady_clock> start_time =  std::chrono::steady_clock::now();
+    //   while (std::chrono::steady_clock::now() - start_time < std::chrono::milliseconds(500))
+    //   {
+    //       {
+    //           std::lock_guard<std::mutex> lock(m_crazyflie_processes_mutex);
+    //           if (m_crazyflie_processes.empty()) break;
+    //       }
+    //       std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    //   }
+    //   RCLCPP_INFO(this->get_logger(), "Cleaning up remaining crazyflie processes...");
+    //   lock.lock();
+    //   // Clean up all crazyflie processes which did not shut down in time
+    //   for (auto &pair : m_crazyflie_processes)
+    //   {
+    //       std::cerr << "Forcefully killing crazyflie process " << pair.first << " ..." << std::endl;
+    //       pid_t pid = std::get<0>(pair.second);
+    //       kill(-pid, SIGKILL); //Kill the whole process group
+// 
+    //   }
+// 
+    //   RCLCPP_INFO(this->get_logger(), "CrazyflieWebotsGateway shut down cleanly.");
+    //   gateway_shutdown_done.store(true);
+    // }
 
     void check_crazyflie_processes()
     {
@@ -73,68 +113,103 @@ public:
           RCLCPP_INFO(this->get_logger(), "Crazyflie process %d has exited. Removing.", id);
           m_crazyflie_processes.erase(id);
       }
+
+      static bool shutdown_completed = false;
+      if (sigint_received.load() && !shutdown_completed)
+      {
+         shutdown_completed = true;
+         RCLCPP_INFO(this->get_logger(), "Shutting down all crazyflies due to SIGINT.");
+         if (m_crazyflie_processes.empty()) gateway_shutdown_done.store(true);
+         for (auto &pair : m_crazyflie_processes)
+         {
+            auto cf_client = std::get<1>(pair.second);
+            cf_client->shutdown_crazyflie_async();
+         }
+      }
     }
 
     void add_crazyflie_callback(
       const std::shared_ptr<crazyflie_webots_gateway_interfaces::srv::WebotsCrazyflie::Request> request,
       std::shared_ptr<crazyflie_webots_gateway_interfaces::srv::WebotsCrazyflie::Response> response)
     {
-      std::lock_guard<std::mutex> lock(m_crazyflie_processes_mutex);
-
       int id = request->id;
-      RCLCPP_INFO(this->get_logger(), "Add crazyflie service called for id: %d.", id);
-      if (m_crazyflie_processes.find(id) != m_crazyflie_processes.end())
+      RCLCPP_INFO(this->get_logger(), "Adding crazyflie with id: %d.", id);
+
       {
-          RCLCPP_WARN(this->get_logger(), "Crazyflie with id %d already exists.", id);
-          response->success = false;
-          return;
+        std::lock_guard<std::mutex> lock(m_crazyflie_processes_mutex);
+        if (m_crazyflie_processes.find(id) != m_crazyflie_processes.end())
+        {
+            RCLCPP_WARN(this->get_logger(), "Crazyflie with id %d already exists.", id);
+            response->success = false;
+            return;
+        }
+
+        pid_t pid = fork();
+        if (pid == 0) 
+        {
+            setpgid(0,0); //Create new process group so that we can kill all child processes later       
+            std::string node_arg = "__node:=cf" + std::to_string(id);  
+            std::string id_arg = "id:=" + std::to_string(id);
+            std::string webots_port_arg = "webots_port:=" + std::to_string(p_webots_port);
+            std::string webots_use_tcp_arg = p_webots_use_tcp ? "webots_use_tcp:=true" : "webots_use_tcp:=false";
+            std::string webots_tcp_ip_arg = "webots_tcp_ip:=" + p_webots_tcp_ip;
+            
+            std::vector<char*> argv;
+            argv.push_back(const_cast<char*>("ros2"));
+            argv.push_back(const_cast<char*>("run"));
+            argv.push_back(const_cast<char*>("crazyflie_webots_cpp"));
+            argv.push_back(const_cast<char*>("crazyflie"));
+            argv.push_back(const_cast<char*>("--ros-args"));
+            argv.push_back(const_cast<char*>("-p"));
+            argv.push_back(const_cast<char*>(id_arg.c_str()));
+            argv.push_back(const_cast<char*>("-p"));
+            argv.push_back(const_cast<char*>(webots_port_arg.c_str())); 
+            argv.push_back(const_cast<char*>("-p"));
+            argv.push_back(const_cast<char*>(webots_use_tcp_arg.c_str()));
+            argv.push_back(const_cast<char*>("-p"));
+            argv.push_back(const_cast<char*>(webots_tcp_ip_arg.c_str()));
+            argv.push_back(const_cast<char*>("-r"));
+            argv.push_back(const_cast<char*>(node_arg.c_str()));  // safe: node_arg lives
+            argv.push_back(nullptr);
+    
+            execvp("ros2", argv.data());
+            _exit(1);
+        }
+
+        RCLCPP_DEBUG(this->get_logger(), "Started crazyflie process with PID %d for id %d.", pid, id);
+
+        std::shared_ptr<CrazyflieLifecycleClient> cf_lifecycle_client = 
+          std::make_shared<CrazyflieLifecycleClient>(
+            this->get_node_topics_interface(),
+            this->get_node_base_interface(),
+            this->get_node_graph_interface(),
+            this->get_node_services_interface(),
+            m_lifecycle_client_callback_group,
+            id,
+            std::bind(&Gateway::on_crazyflie_shutdown, this, std::placeholders::_1));
+
+        m_crazyflie_processes[id] = std::make_tuple(pid, cf_lifecycle_client);
       }
 
-      pid_t pid = fork();
-      if (pid == 0) 
+
+      std::unique_lock<std::mutex> lock(m_crazyflie_processes_mutex);
+      auto cf_lifecycle_client = std::get<1>(m_crazyflie_processes[id]);
+      lock.unlock();
+
+      bool service_available = cf_lifecycle_client->wait_for_change_state_service(std::chrono::milliseconds(2000));
+      if (!service_available)
       {
-          setpgid(0,0); //Create new process group so that we can kill all child processes later       
-          std::string node_arg = "__node:=cf" + std::to_string(id);  
-          std::string id_arg = "id:=" + std::to_string(id);
-          std::string webots_port_arg = "webots_port:=" + std::to_string(p_webots_port);
-          std::string webots_use_tcp_arg = p_webots_use_tcp ? "webots_use_tcp:=true" : "webots_use_tcp:=false";
-          std::string webots_tcp_ip_arg = "webots_tcp_ip:=" + p_webots_tcp_ip;
-          
-          std::vector<char*> argv;
-          argv.push_back(const_cast<char*>("ros2"));
-          argv.push_back(const_cast<char*>("run"));
-          argv.push_back(const_cast<char*>("crazyflie_webots_cpp"));
-          argv.push_back(const_cast<char*>("crazyflie"));
-          argv.push_back(const_cast<char*>("--ros-args"));
-          argv.push_back(const_cast<char*>("-p"));
-          argv.push_back(const_cast<char*>(id_arg.c_str()));
-          argv.push_back(const_cast<char*>("-p"));
-          argv.push_back(const_cast<char*>(webots_port_arg.c_str())); 
-          argv.push_back(const_cast<char*>("-p"));
-          argv.push_back(const_cast<char*>(webots_use_tcp_arg.c_str()));
-          argv.push_back(const_cast<char*>("-p"));
-          argv.push_back(const_cast<char*>(webots_tcp_ip_arg.c_str()));
-          argv.push_back(const_cast<char*>("-r"));
-          argv.push_back(const_cast<char*>(node_arg.c_str()));  // safe: node_arg lives
-          argv.push_back(nullptr);
-  
-          execvp("ros2", argv.data());
-          _exit(1);
+          RCLCPP_ERROR(this->get_logger(), "Change state service for crazyflie %d not available.", id);
       }
 
-      RCLCPP_INFO(this->get_logger(), "Started crazyflie process with PID %d for id %d.", pid, id);
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+   
 
-      std::shared_ptr<CrazyflieLifecycleClient> cf_lifecycle_client = 
-        std::make_shared<CrazyflieLifecycleClient>(
-          this->get_node_topics_interface(),
-          this->get_node_base_interface(),
-          this->get_node_graph_interface(),
-          this->get_node_services_interface(),
-          m_lifecycle_client_callback_group,
-          id,
-          std::bind(&Gateway::on_crazyflie_shutdown, this, std::placeholders::_1));
+      //bool suc = cf_lifecycle_client->configure_crazyflie_sync(std::chrono::milliseconds(2000));
+      //if (!suc) RCLCPP_INFO(this->get_logger(), "Configured crazyflie %d: failure", id);
+      // suc = cf_lifecycle_client->activate_crazyflie_sync();
+      // if (!suc) RCLCPP_INFO(this->get_logger(), "Activated crazyflie %d: failure");
 
-      m_crazyflie_processes[id] = std::make_tuple(pid, cf_lifecycle_client);
 
       response->success = true;
     }
@@ -176,17 +251,25 @@ public:
       auto it = m_crazyflie_processes.find(id);
       if (it != m_crazyflie_processes.end())
       {
-          RCLCPP_INFO(this->get_logger(), "Crazyflie with id %d has shut down.", id);
-          //pid_t pid = std::get<0>(it->second);
-          //kill(-pid, SIGINT); //Kill the whole process group
+          RCLCPP_INFO(this->get_logger(), "Detected shutdown on crazyflie with id %d.", id);
           m_crazyflie_processes.erase(it);
       }
-      
+
+      if (m_crazyflie_processes.empty() && sigint_received.load())
+      {
+          RCLCPP_INFO(this->get_logger(), "All crazyflie processes have shut down. Proceeding with gateway shutdown.");
+          gateway_shutdown_done.store(true);
+      }      
     }
 
 
 private: 
     std::shared_ptr<rclcpp::CallbackGroup> m_lifecycle_client_callback_group;
+
+    std::shared_ptr<rclcpp::CallbackGroup> m_shutdown_detector_callback_group;
+    std::shared_ptr<rclcpp::TimerBase> m_shutdown_detector_timer;
+
+    std::shared_ptr<rclcpp::CallbackGroup> m_gateway_callback_group;
     std::shared_ptr<rclcpp::Service<crazyflie_webots_gateway_interfaces::srv::WebotsCrazyflie>> m_add_crazyflie_service;
     std::shared_ptr<rclcpp::Service<crazyflie_webots_gateway_interfaces::srv::WebotsCrazyflie>> m_remove_crazyflie_service; 
     
@@ -202,13 +285,33 @@ private:
 };
 
 
+
+void sigint_handler(int signum)
+{
+    (void)signum;
+    sigint_received.store(true);
+    int safey_counter = 0;
+    while (!gateway_shutdown_done.load())
+    { 
+        safey_counter++;
+        if (safey_counter > 500) break;// 3 seconds timeout
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (gateway_shutdown_done.load()) std::cerr << "Gateway shut down cleanly after SIGINT." << std::endl;
+    else std::cerr << "Gateway shutdown after SIGINT timed out." << std::endl;
+}
+
+
 int main(int argc, char ** argv)
 {
+  signal(SIGINT, sigint_handler);
+  // Install before rclcpp this way rclcpp will store it as a "old" handler and execute it before its own shutdown
+
   rclcpp::init(argc, argv);
   rclcpp::executors::MultiThreadedExecutor executor;
 
   auto gateway = std::make_shared<Gateway>();
-
+  
   executor.add_node(gateway);
   executor.spin();
   executor.remove_node(gateway->get_node_base_interface());

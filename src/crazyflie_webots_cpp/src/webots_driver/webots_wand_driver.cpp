@@ -2,7 +2,7 @@
 #include <iostream>
 
 WebotsWandDriver::WebotsWandDriver(int id, int webots_port, bool webots_use_tcp, const std::string &webots_tcp_ip)
-    : WebotsRobotDriver("Wand0" + std::to_string(id), webots_port, webots_use_tcp, webots_tcp_ip)
+    : WebotsRobotDriver("Wand" + std::to_string(id), webots_port, webots_use_tcp, webots_tcp_ip)
     , m_id(id)
 {
     std::cout << "====== Controls =======" << std::endl

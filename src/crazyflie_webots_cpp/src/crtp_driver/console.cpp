@@ -19,7 +19,7 @@ Console::Console(
         rclcpp::QoS(10),
         publisher_options);
 
-    RCLCPP_INFO(node_logging_interface->get_logger(), "Console initialized");
+    RCLCPP_DEBUG(node_logging_interface->get_logger(), "Console initialized");
 }
 
 void Console::console_message(const std::string message)

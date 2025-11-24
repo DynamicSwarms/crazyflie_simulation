@@ -38,6 +38,12 @@ CrazyflieLifecycleClient::~CrazyflieLifecycleClient()
     m_transition_event_sub.reset();
     m_change_state_client.reset();
 }
+bool 
+CrazyflieLifecycleClient::wait_for_change_state_service(std::chrono::milliseconds timeout_ms)
+{
+    return m_change_state_client->wait_for_service(timeout_ms);
+}
+
 
 std::future<std::shared_ptr<lifecycle_msgs::srv::ChangeState::Response>>
 CrazyflieLifecycleClient::transition_crazyflie_async(uint8_t id, const std::string &label)
@@ -55,6 +61,24 @@ CrazyflieLifecycleClient::transition_crazyflie_async(uint8_t id, const std::stri
 bool 
 CrazyflieLifecycleClient::transition_crazyflie_sync(uint8_t id, const std::string &label, std::optional<std::chrono::milliseconds> timeout_ms)
 {
+    if (timeout_ms.has_value())
+    {
+        std::chrono::time_point<std::chrono::steady_clock> start_time =  std::chrono::steady_clock::now();
+        m_change_state_client->wait_for_service(timeout_ms.value());
+        std::chrono::time_point<std::chrono::steady_clock> end_time =  std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (elapsed >= timeout_ms.value())
+        {
+            std::cerr << "Timeout while waiting for change_state service of crazyflie " << m_id << std::endl;
+            return false;
+        }
+        timeout_ms.value() -= elapsed;
+    } else {
+        m_change_state_client->wait_for_service();
+    }
+
+
+
     auto future = transition_crazyflie_async(id, label);
     if (timeout_ms.has_value())
     {
@@ -70,25 +94,19 @@ CrazyflieLifecycleClient::transition_crazyflie_sync(uint8_t id, const std::strin
 }
 
 bool 
-CrazyflieLifecycleClient::activate_crazyflie_sync()
+CrazyflieLifecycleClient::activate_crazyflie_sync(std::chrono::milliseconds timeout_ms)
 {
-   return transition_crazyflie_sync(lifecycle_msgs::msg::State::TRANSITION_STATE_ACTIVATING, "activate", std::chrono::milliseconds(1000));
-}
-
-void 
-CrazyflieLifecycleClient::deactivate_crazyflie_async()
-{
-    transition_crazyflie_async(lifecycle_msgs::msg::State::TRANSITION_STATE_DEACTIVATING, "deactivate");
-}
-
-void 
-CrazyflieLifecycleClient::shutdown_crazyflie_async()
-{
-    transition_crazyflie_async(lifecycle_msgs::msg::State::TRANSITION_STATE_SHUTTINGDOWN, "shutdown");
+   return transition_crazyflie_sync(lifecycle_msgs::msg::State::TRANSITION_STATE_ACTIVATING, "activate",timeout_ms);
 }
 
 bool 
-CrazyflieLifecycleClient::shutdown_crazyflie_sync(std::optional<std::chrono::milliseconds> timeout_ms)
+CrazyflieLifecycleClient::configure_crazyflie_sync(std::chrono::milliseconds timeout_ms)
+{
+   return transition_crazyflie_sync(lifecycle_msgs::msg::State::TRANSITION_STATE_CONFIGURING, "configure", timeout_ms);
+}
+
+bool 
+CrazyflieLifecycleClient::shutdown_crazyflie_sync(std::chrono::milliseconds timeout_ms)
 {
     try {
         return transition_crazyflie_sync(lifecycle_msgs::msg::State::TRANSITION_STATE_SHUTTINGDOWN, "shutdown", timeout_ms);
@@ -103,12 +121,37 @@ CrazyflieLifecycleClient::shutdown_crazyflie_sync(std::optional<std::chrono::mil
     }
 }
 
+std::future<std::shared_ptr<lifecycle_msgs::srv::ChangeState::Response>> 
+CrazyflieLifecycleClient::configure_crazyflie_async()
+{
+    return transition_crazyflie_async(lifecycle_msgs::msg::State::TRANSITION_STATE_CONFIGURING, "configure");
+}
+
+std::future<std::shared_ptr<lifecycle_msgs::srv::ChangeState::Response>> 
+CrazyflieLifecycleClient::activate_crazyflie_async()
+{
+    return transition_crazyflie_async(lifecycle_msgs::msg::State::TRANSITION_STATE_ACTIVATING, "activate");
+}
+
+std::future<std::shared_ptr<lifecycle_msgs::srv::ChangeState::Response>> 
+CrazyflieLifecycleClient::deactivate_crazyflie_async()
+{
+    return transition_crazyflie_async(lifecycle_msgs::msg::State::TRANSITION_STATE_DEACTIVATING, "deactivate");
+}
+
+std::future<std::shared_ptr<lifecycle_msgs::srv::ChangeState::Response>> 
+CrazyflieLifecycleClient::shutdown_crazyflie_async()
+{
+    return transition_crazyflie_async(lifecycle_msgs::msg::State::TRANSITION_STATE_SHUTTINGDOWN, "shutdown");
+}
+
+
+
 void 
 CrazyflieLifecycleClient::m_transition_event_callback(const lifecycle_msgs::msg::TransitionEvent::SharedPtr msg)
 {
     if (msg->goal_state.id == lifecycle_msgs::msg::State::PRIMARY_STATE_FINALIZED)
     {
-        std::cerr << "CrazyflieLifecycleClient detected FINALIZED state, calling disconnect callback." << std::endl;
         if (m_disconnect_callback) m_disconnect_callback(m_id);
     }
 }

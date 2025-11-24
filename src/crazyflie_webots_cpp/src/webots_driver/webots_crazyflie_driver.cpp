@@ -4,7 +4,7 @@
 
 WebotsCrazyflieDriver::WebotsCrazyflieDriver(int id, int webots_port, bool webots_use_tcp, const std::string &webots_tcp_ip)
       : WebotsRobotDriver("cf" + std::to_string(id), webots_port, webots_use_tcp, webots_tcp_ip) 
-      ,m_id(id)
+      , m_id(id)
 {
     // Initialize motors
     m_m1_motor = wb_robot_get_device("m1_motor");
@@ -19,8 +19,12 @@ WebotsCrazyflieDriver::WebotsCrazyflieDriver(int id, int webots_port, bool webot
     // Initialize sensors
     m_gps = wb_robot_get_device("gps");
     wb_gps_enable(m_gps, static_cast<int>(get_time_step()));
-    m_zranger = wb_robot_get_device("range");
-    wb_distance_sensor_enable(m_zranger, static_cast<int>(get_time_step()));
+    m_zranger = wb_robot_get_device("zrange");
+    m_ranger_front = wb_robot_get_device("range_front");
+    m_ranger_back = wb_robot_get_device("range_back");
+    //m_ranger_up = wb_robot_get_device("range_up");
+    m_ranger_left = wb_robot_get_device("range_left");
+    m_ranger_right = wb_robot_get_device("range_right");
 
     Eigen::Vector3d pos = get_robot_pose().translation();
     m_target = {pos.x(), pos.y(), pos.z()};
@@ -36,7 +40,6 @@ WebotsCrazyflieDriver::step()
     // Controller of Crazyflie in Webots using a PI controller to reach target position
     // Step the simulation and then read the sensors, compute control and send actuators commands
     if (!WebotsRobotDriver::step()) return false;
-    return true;
 
     double Kp = 1.0; // Proportional gain
     double Ki = 0.1; // Integral gain
@@ -88,9 +91,6 @@ WebotsCrazyflieDriver::step()
     wb_motor_set_velocity(m_m3_motor, -motor_speed);
     wb_motor_set_velocity(m_m4_motor, motor_speed);
       
-    // Publish zranger values
-    double z_range_value = wb_distance_sensor_get_value(m_zranger);
-
     m_past_time = wb_robot_get_time();
     return true;
 }
@@ -138,4 +138,53 @@ bool
 WebotsCrazyflieDriver::is_tumbled()
 {
     return false; // Dummy value for is tumbled
+}
+
+double
+WebotsCrazyflieDriver::get_range_front()
+{
+    if (wb_distance_sensor_get_sampling_period(m_ranger_front) == 0)
+        wb_distance_sensor_enable(m_ranger_front, static_cast<int>(get_time_step()));
+    return wb_distance_sensor_get_value(m_ranger_front);
+}
+
+double
+WebotsCrazyflieDriver::get_range_back()
+{
+    if (wb_distance_sensor_get_sampling_period(m_ranger_back) == 0)
+        wb_distance_sensor_enable(m_ranger_back, static_cast<int>(get_time_step()));
+    return wb_distance_sensor_get_value(m_ranger_back);
+}
+
+double
+WebotsCrazyflieDriver::get_range_up()
+{
+    return 0.0;
+    //if (wb_distance_sensor_get_sampling_period(m_ranger_up) == 0)
+    //    wb_distance_sensor_enable(m_ranger_up, static_cast<int>(get_time_step()));
+    //return wb_distance_sensor_get_value(m_ranger_up);
+}   
+
+double
+WebotsCrazyflieDriver::get_range_left()
+{
+    if (wb_distance_sensor_get_sampling_period(m_ranger_left) == 0)
+        wb_distance_sensor_enable(m_ranger_left, static_cast<int>(get_time_step()));
+    return wb_distance_sensor_get_value(m_ranger_left);
+}   
+
+double
+WebotsCrazyflieDriver::get_range_right()
+{
+    if (wb_distance_sensor_get_sampling_period(m_ranger_right) == 0)
+        wb_distance_sensor_enable(m_ranger_right, static_cast<int>(get_time_step()));
+    return wb_distance_sensor_get_value(m_ranger_right);
+}   
+
+double
+WebotsCrazyflieDriver::get_range_zrange()
+{
+    if (wb_distance_sensor_get_sampling_period(m_zranger) == 0)
+        wb_distance_sensor_enable(m_zranger, static_cast<int>(get_time_step()));
+    return wb_distance_sensor_get_value(m_zranger);
 }

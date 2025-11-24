@@ -21,11 +21,17 @@ class CrazyflieLifecycleClient
     
     ~CrazyflieLifecycleClient();
 
-    bool activate_crazyflie_sync();
-    void deactivate_crazyflie_async();
+    bool wait_for_change_state_service(std::chrono::milliseconds timeout_ms);
 
-    bool shutdown_crazyflie_sync(std::optional<std::chrono::milliseconds> timeout_ms);
-    void shutdown_crazyflie_async();
+    bool activate_crazyflie_sync(std::chrono::milliseconds timeout_ms);
+    bool configure_crazyflie_sync(std::chrono::milliseconds timeout_ms);
+    bool shutdown_crazyflie_sync(std::chrono::milliseconds timeout_ms);
+
+
+    std::future<std::shared_ptr<lifecycle_msgs::srv::ChangeState::Response>> configure_crazyflie_async();
+    std::future<std::shared_ptr<lifecycle_msgs::srv::ChangeState::Response>> activate_crazyflie_async();
+    std::future<std::shared_ptr<lifecycle_msgs::srv::ChangeState::Response>> deactivate_crazyflie_async();
+    std::future<std::shared_ptr<lifecycle_msgs::srv::ChangeState::Response>> shutdown_crazyflie_async();
 
     bool transition_crazyflie_sync(uint8_t id, const std::string &label, std::optional<std::chrono::milliseconds> timeout_ms);
 
