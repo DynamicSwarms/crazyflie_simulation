@@ -1,8 +1,8 @@
-#include "crazyflie_webots_cpp/webots_driver/webots_robot_driver.hpp"
+#include "crazyflie_webots/webots_driver/webots_robot_driver.hpp"
 #include <iostream>
 #include <thread>      // for std::thread and std::this_thread::sleep_for
 #include <chrono>      // for std::chrono::steady_clock and durations
-
+#include <signal.h>
 WebotsRobotDriver::WebotsRobotDriver(const std::string robot_name, int webots_port, bool webots_use_tcp, const std::string &webots_tcp_ip)
       : m_robot_name(robot_name)
       , m_webots_port(webots_port)
@@ -24,7 +24,12 @@ WebotsRobotDriver::WebotsRobotDriver(const std::string robot_name, int webots_po
 
     bool init_success = false;
     std::thread initThread([&](){
+        // The signal handler would be overridden by Webots, so we need to save and restore it
+        struct sigaction old_sigint;
+        sigaction(SIGINT, NULL, &old_sigint); // get current handler
         wb_robot_init();
+        sigaction(SIGINT, &old_sigint, NULL); // Restore ROS SIGINT handler
+
         init_success = true;
     });
     while (std::chrono::steady_clock::now() - start < timeout) {

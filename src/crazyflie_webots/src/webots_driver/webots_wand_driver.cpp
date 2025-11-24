@@ -1,4 +1,4 @@
-#include "crazyflie_webots_cpp/webots_driver/webots_wand_driver.hpp"
+#include "crazyflie_webots/webots_driver/webots_wand_driver.hpp"
 #include <iostream>
 
 WebotsWandDriver::WebotsWandDriver(int id, int webots_port, bool webots_use_tcp, const std::string &webots_tcp_ip)

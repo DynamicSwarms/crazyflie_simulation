@@ -51,47 +51,6 @@ public:
 
     ~Gateway(){}
 
-
-    // void shutdown()
-    // {
-    //   std::unique_lock<std::mutex> lock(m_crazyflie_processes_mutex);
-    //   RCLCPP_INFO(this->get_logger(), "Shutting down CrazyflieWebotsGateway...");
-// 
-    //   for (auto &pair : m_crazyflie_processes)
-    //   {
-    //       int id = pair.first;
-    //       std::shared_ptr<CrazyflieLifecycleClient> cf_client = std::get<1>(pair.second);
-    //       RCLCPP_INFO(this->get_logger(), "Shutting down crazyflie %d...", id);
-    //       cf_client->shutdown_crazyflie_async();
-    //   }
-// 
-    //   lock.unlock();
-// 
-    //   RCLCPP_INFO(this->get_logger(), "Waiting for crazyflie processes to exit...");
-    //   std::chrono::time_point<std::chrono::steady_clock> start_time =  std::chrono::steady_clock::now();
-    //   while (std::chrono::steady_clock::now() - start_time < std::chrono::milliseconds(500))
-    //   {
-    //       {
-    //           std::lock_guard<std::mutex> lock(m_crazyflie_processes_mutex);
-    //           if (m_crazyflie_processes.empty()) break;
-    //       }
-    //       std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    //   }
-    //   RCLCPP_INFO(this->get_logger(), "Cleaning up remaining crazyflie processes...");
-    //   lock.lock();
-    //   // Clean up all crazyflie processes which did not shut down in time
-    //   for (auto &pair : m_crazyflie_processes)
-    //   {
-    //       std::cerr << "Forcefully killing crazyflie process " << pair.first << " ..." << std::endl;
-    //       pid_t pid = std::get<0>(pair.second);
-    //       kill(-pid, SIGKILL); //Kill the whole process group
-// 
-    //   }
-// 
-    //   RCLCPP_INFO(this->get_logger(), "CrazyflieWebotsGateway shut down cleanly.");
-    //   gateway_shutdown_done.store(true);
-    // }
-
     void check_crazyflie_processes()
     {
       std::lock_guard<std::mutex> lock(m_crazyflie_processes_mutex);
@@ -118,10 +77,11 @@ public:
       if (sigint_received.load() && !shutdown_completed)
       {
          shutdown_completed = true;
-         RCLCPP_INFO(this->get_logger(), "Shutting down all crazyflies due to SIGINT.");
          if (m_crazyflie_processes.empty()) gateway_shutdown_done.store(true);
+         else RCLCPP_INFO(this->get_logger(), "Shutting down all crazyflies due to SIGINT.");
          for (auto &pair : m_crazyflie_processes)
          {
+            RCLCPP_INFO(this->get_logger(), "Shutting down crazyflie with id %d.", pair.first);
             auto cf_client = std::get<1>(pair.second);
             cf_client->shutdown_crazyflie_async();
          }
@@ -157,7 +117,7 @@ public:
             std::vector<char*> argv;
             argv.push_back(const_cast<char*>("ros2"));
             argv.push_back(const_cast<char*>("run"));
-            argv.push_back(const_cast<char*>("crazyflie_webots_cpp"));
+            argv.push_back(const_cast<char*>("crazyflie_webots"));
             argv.push_back(const_cast<char*>("crazyflie"));
             argv.push_back(const_cast<char*>("--ros-args"));
             argv.push_back(const_cast<char*>("-p"));
@@ -191,26 +151,6 @@ public:
         m_crazyflie_processes[id] = std::make_tuple(pid, cf_lifecycle_client);
       }
 
-
-      std::unique_lock<std::mutex> lock(m_crazyflie_processes_mutex);
-      auto cf_lifecycle_client = std::get<1>(m_crazyflie_processes[id]);
-      lock.unlock();
-
-      bool service_available = cf_lifecycle_client->wait_for_change_state_service(std::chrono::milliseconds(2000));
-      if (!service_available)
-      {
-          RCLCPP_ERROR(this->get_logger(), "Change state service for crazyflie %d not available.", id);
-      }
-
-      std::this_thread::sleep_for(std::chrono::milliseconds(50));
-   
-
-      //bool suc = cf_lifecycle_client->configure_crazyflie_sync(std::chrono::milliseconds(2000));
-      //if (!suc) RCLCPP_INFO(this->get_logger(), "Configured crazyflie %d: failure", id);
-      // suc = cf_lifecycle_client->activate_crazyflie_sync();
-      // if (!suc) RCLCPP_INFO(this->get_logger(), "Activated crazyflie %d: failure");
-
-
       response->success = true;
     }
 
@@ -218,27 +158,41 @@ public:
       const std::shared_ptr<crazyflie_webots_gateway_interfaces::srv::WebotsCrazyflie::Request> request,
       std::shared_ptr<crazyflie_webots_gateway_interfaces::srv::WebotsCrazyflie::Response> response)
     {
-      std::lock_guard<std::mutex> lock(m_crazyflie_processes_mutex);
+      std::unique_lock<std::mutex> lock(m_crazyflie_processes_mutex);
 
       int id = request->id;
       RCLCPP_INFO(this->get_logger(), "Remove crazyflie service called for id: %d.", id);
 
+      response->success = true;
+
       auto it = m_crazyflie_processes.find(id);
       if (it != m_crazyflie_processes.end())
       {
-          bool success = std::get<1>(it->second)->shutdown_crazyflie_sync(std::chrono::milliseconds(100));
-          std::cerr << "Shutdown crazyflie " << id << (success ? " succeeded." : " timed out.") << std::endl;
-          if (!success)
+          std::get<1>(it->second)->shutdown_crazyflie_async();
+          lock.unlock();
+
+          bool removal_success = false;
+          std::chrono::time_point<std::chrono::steady_clock> start_time = std::chrono::steady_clock::now();
+          while (std::chrono::steady_clock::now() - start_time < std::chrono::seconds(300))
+          {
+              lock.lock();
+              removal_success = m_crazyflie_processes.find(id) == m_crazyflie_processes.end();
+              lock.unlock();
+              if (removal_success) break;
+              std::this_thread::sleep_for(std::chrono::milliseconds(10));
+          }
+
+          lock.lock();
+          if (!(m_crazyflie_processes.find(id) == m_crazyflie_processes.end()))
           {
               RCLCPP_WARN(this->get_logger(), "Shutdown of crazyflie %d timed out.", id);
               pid_t pid = std::get<0>(it->second);
               kill(-pid, SIGTERM); //Kill the whole process group
+              m_crazyflie_processes.erase(it);
           }
-          m_crazyflie_processes.erase(it);
-
           RCLCPP_INFO(this->get_logger(), "Crazyflie with id %d removed.", id);
-
       } else {
+          response->success = false;
           RCLCPP_WARN(this->get_logger(), "Crazyflie with id %d does not exist.", id);
       }
 

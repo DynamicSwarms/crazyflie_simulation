@@ -4,7 +4,7 @@
 #include "lifecycle_msgs/msg/transition_event.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 
-#include "crazyflie_webots_cpp/webots_driver/webots_wand_driver.hpp"
+#include "crazyflie_webots/webots_driver/webots_wand_driver.hpp"
 
 #include "tf2_msgs/msg/tf_message.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
@@ -25,8 +25,8 @@ class Wand : public rclcpp_lifecycle::LifecycleNode
       // We would like to use tf2_ros::TransformBroadcaster but it seems to have issues with lifecycle nodes -> crashes
       m_tf_callback_group = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
       auto publisher_options = rclcpp::PublisherOptions();
+      publisher_options.callback_group = m_tf_callback_group;
       m_tf_publisher = this->create_publisher<tf2_msgs::msg::TFMessage>("/tf", tf2_ros::DynamicBroadcasterQoS(), publisher_options);
-      
       m_tf_timer = this->create_wall_timer(std::chrono::milliseconds(50),
         std::bind(&Wand::broadcast_tf, this),
         m_tf_callback_group);
@@ -86,7 +86,7 @@ class Wand : public rclcpp_lifecycle::LifecycleNode
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
   on_configure(const rclcpp_lifecycle::State &state)
   {
-
+    (void)state;
   return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
   }
 
@@ -116,8 +116,8 @@ class Wand : public rclcpp_lifecycle::LifecycleNode
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
   on_shutdown(const rclcpp_lifecycle::State &state)
   {
-    RCLCPP_DEBUG(get_logger(), "Shutting down cleanly.");
-    std::cerr << "Shutting down cleanly." << std::endl; 
+    (void)state;
+    RCLCPP_INFO(get_logger(), "Shutting down cleanly.");
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
   }
 
@@ -142,10 +142,10 @@ class Wand : public rclcpp_lifecycle::LifecycleNode
 
 };
 
+
+
 int main(int argc, char **argv)
 {
-  (void)argc;
-  (void)argv;
 
   rclcpp::init(argc, argv);
   rclcpp::NodeOptions options;
@@ -157,7 +157,6 @@ int main(int argc, char **argv)
     rclcpp::shutdown();
     return 1;
   }
-
   rclcpp::executors::MultiThreadedExecutor executor;
   executor.add_node(node->get_node_base_interface());
   while (rclcpp::ok() &&  !(node->get_current_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_FINALIZED)) executor.spin_some();

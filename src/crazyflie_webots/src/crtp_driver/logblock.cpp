@@ -63,6 +63,7 @@ void LogBlock::m_start_log_block(const std::shared_ptr<std_msgs::msg::Int16> msg
 
 void LogBlock::m_stop_log_block(const std::shared_ptr<std_msgs::msg::Empty> msg)
 {
+    (void)msg;
     m_publish_log_data_timer->cancel();
     m_publish_log_data_timer.reset();
     RCLCPP_INFO(m_logging_interface->get_logger(), "Stopping log block");

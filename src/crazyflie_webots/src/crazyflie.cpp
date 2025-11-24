@@ -5,14 +5,14 @@
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "rclcpp_lifecycle/transition.hpp"
 
-#include "crazyflie_webots_cpp/crtp_driver/console.hpp"
-#include "crazyflie_webots_cpp/crtp_driver/generic_commander.hpp"
-#include "crazyflie_webots_cpp/crtp_driver/hl_commander.hpp"
-#include "crazyflie_webots_cpp/crtp_driver/localization.hpp"
-#include "crazyflie_webots_cpp/crtp_driver/logging.hpp"
-#include "crazyflie_webots_cpp/crtp_driver/parameters.hpp"
+#include "crazyflie_webots/crtp_driver/console.hpp"
+#include "crazyflie_webots/crtp_driver/generic_commander.hpp"
+#include "crazyflie_webots/crtp_driver/hl_commander.hpp"
+#include "crazyflie_webots/crtp_driver/localization.hpp"
+#include "crazyflie_webots/crtp_driver/logging.hpp"
+#include "crazyflie_webots/crtp_driver/parameters.hpp"
 
-#include "crazyflie_webots_cpp/webots_driver/webots_crazyflie_driver.hpp"
+#include "crazyflie_webots/webots_driver/webots_crazyflie_driver.hpp"
 
 class Crazyflie : public rclcpp_lifecycle::LifecycleNode
 {
@@ -163,6 +163,7 @@ class Crazyflie : public rclcpp_lifecycle::LifecycleNode
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
   on_shutdown(const rclcpp_lifecycle::State &state)
   {
+    (void)state;
     RCLCPP_DEBUG(get_logger(), "Shutting down cleanly.");
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
   }

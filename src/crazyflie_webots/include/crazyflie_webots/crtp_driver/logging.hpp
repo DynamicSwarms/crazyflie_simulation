@@ -54,4 +54,31 @@ private:
 
     std::map<std::string, std::shared_ptr<LogBlock>> m_log_blocks;
     std::map<std::string, std::vector<std::string>> m_log_block_variables;
+
+    const std::map<std::string, std::function<double(std::shared_ptr<WebotsCrazyflieDriver>)>> kVariableMap = {
+        {"range.front",      [](auto d) { return d->get_range_front(); }},
+        {"range.back",       [](auto d) { return d->get_range_back(); }},
+        {"range.up",         [](auto d) { return d->get_range_up(); }},
+        {"range.left",       [](auto d) { return d->get_range_left(); }},
+        {"range.right",      [](auto d) { return d->get_range_right(); }},
+        {"range.zrange",     [](auto d) { return d->get_range_zrange(); }},
+    
+        {"stateEstimate.x",  [](auto d) { return d->get_robot_pose().translation().x(); }},
+        {"stateEstimate.y",  [](auto d) { return d->get_robot_pose().translation().y(); }},
+        {"stateEstimate.z",  [](auto d) { return d->get_robot_pose().translation().z(); }},
+        {"stateEstimate.yaw",[](auto d) {
+            Eigen::Affine3d pose = d->get_robot_pose();
+            Eigen::Matrix3d R = pose.rotation();
+            return atan2(R(1,0), R(0,0));
+        }},
+    
+        {"stateEstimate.qx", [](auto d) { return Eigen::Quaterniond(d->get_robot_pose().rotation()).x(); }},
+        {"stateEstimate.qy", [](auto d) { return Eigen::Quaterniond(d->get_robot_pose().rotation()).y(); }},
+        {"stateEstimate.qz", [](auto d) { return Eigen::Quaterniond(d->get_robot_pose().rotation()).z(); }},
+        {"stateEstimate.qw", [](auto d) { return Eigen::Quaterniond(d->get_robot_pose().rotation()).w(); }},
+    
+        {"pm.vbat",          [](auto d) { return d->get_battery_voltage(); }},
+        {"pm.chargeCurrent", [](auto d) { return d->get_charge_current(); }},
+        {"pm.state",         [](auto d) { return d->get_charge_state(); }}
+    };
 };  

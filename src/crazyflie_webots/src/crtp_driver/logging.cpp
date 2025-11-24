@@ -72,12 +72,18 @@ Logging::Logging(
 
 void Logging::download_toc_callback(const std_msgs::msg::Empty::SharedPtr msg)
 {
+    (void)msg;
     RCLCPP_INFO(m_logging_interface->get_logger(), "Downloading logging TOC");
 }
 
 void Logging::get_toc_info_callback(const std_msgs::msg::Empty::SharedPtr msg)
 {
-    RCLCPP_INFO(m_logging_interface->get_logger(), "Getting logging TOC info");
+    (void)msg;
+    RCLCPP_INFO(m_logging_interface->get_logger(), "Available logging variables:");
+
+    for (const auto &pair : kVariableMap) {
+        RCLCPP_INFO(m_logging_interface->get_logger(), "%s", pair.first.c_str());
+    }
 }
 
 void Logging::m_create_log_block(const crazyflie_interfaces::msg::LogBlock::SharedPtr msg)
@@ -113,55 +119,11 @@ Logging::m_get_data_callback(const std::string &block_name)
             RCLCPP_WARN(m_logging_interface->get_logger(), "Requested data for unknown log block: %s", block_name.c_str());
             return data;
         }
-
-        Eigen::Affine3d pose = webots_driver->get_robot_pose();
-        Eigen::Quaterniond q(pose.rotation());
-
         std::vector<std::string> variables = m_log_block_variables[block_name];
         for (const auto &var : variables) {
-            
-            if (var == "range.front") {
-                data.push_back(webots_driver->get_range_front());
-            } else if (var == "range.back") {
-                data.push_back(webots_driver->get_range_back());
-            } else if (var == "range.up") {
-                data.push_back(webots_driver->get_range_up());
-            } else  if (var == "range.left") {
-                data.push_back(webots_driver->get_range_left());
-            } else  if (var == "range.right") {
-                data.push_back(webots_driver->get_range_right());
-            } else if (var == "range.zrange") {
-                data.push_back(webots_driver->get_range_zrange());
-            } else if (var == "stateEstimate.x") {
-                data.push_back(pose.translation().x());
-            } else if (var == "stateEstimate.y") {
-                data.push_back(pose.translation().y());
-            } else if (var == "stateEstimate.z") {
-                data.push_back(pose.translation().z());
-            } else if (var == "stateEstimate.yaw") {
-                // Extract yaw from rotation matrix
-                Eigen::Matrix3d rotation = pose.rotation();
-                double yaw = atan2(rotation(1,0), rotation(0,0));
-                data.push_back(yaw);
-            } else if (var == "stateEstimate.qx") {
-                data.push_back(q.x());
-            } else if (var == "stateEstimate.qy") {
-                data.push_back(q.y());
-            } else if (var == "stateEstimate.qz") {
-                data.push_back(q.z());
-            } else if (var == "stateEstimate.qw") {
-                data.push_back(q.w());
-            } else if (var == "pm.vbat") {
-                data.push_back(webots_driver->get_battery_voltage());
-            } else if (var == "pm.chargeCurrent") {
-                data.push_back(webots_driver->get_charge_current());
-            } else if (var == "pm.state") {
-                data.push_back(webots_driver->get_charge_state());
-            } else {
-                RCLCPP_WARN(m_logging_interface->get_logger(), "Unknown variable requested: %s", var.c_str());
-                data.push_back(0.0);
-            }
-        }
+            data.push_back(kVariableMap.count(var) ? kVariableMap.at(var)(webots_driver) : 0.0);
+            if (!kVariableMap.count(var)) RCLCPP_WARN(m_logging_interface->get_logger(), "Unknown variable requested: %s", var.c_str());
+        }           
     }
     return data;
 }

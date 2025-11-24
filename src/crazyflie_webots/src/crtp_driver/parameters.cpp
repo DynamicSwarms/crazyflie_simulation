@@ -11,6 +11,7 @@ Parameters::Parameters(
 , m_webots_driver(webots_driver)
 , m_callback_group(node_base_interface->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive))
 {
+    (void)node_parameters_interface;
     auto sub_opt = rclcpp::SubscriptionOptions();
     sub_opt.callback_group = m_callback_group;
 
@@ -71,10 +72,12 @@ rcl_interfaces::msg::SetParametersResult Parameters::set_parameter_callback(cons
 
 void Parameters::download_toc_callback(const std_msgs::msg::Empty::SharedPtr msg)
 {
+    (void)msg;
     RCLCPP_INFO(m_logging_interface->get_logger(), "Downloading parameters TOC");
 }
 
 void Parameters::get_toc_info_callback(const std_msgs::msg::Empty::SharedPtr msg)
 {
+    (void)msg;
     RCLCPP_INFO(m_logging_interface->get_logger(), "Getting parameters TOC info");
 }
