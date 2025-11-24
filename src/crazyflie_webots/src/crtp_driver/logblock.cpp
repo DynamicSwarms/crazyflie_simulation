@@ -58,7 +58,7 @@ void LogBlock::m_start_log_block(const std::shared_ptr<std_msgs::msg::Int16> msg
         m_base_interface.get(),
         m_timers_interface.get()
     );
-    RCLCPP_INFO(m_logging_interface->get_logger(), "Starting log block with id: %d", msg->data);
+    RCLCPP_INFO(m_logging_interface->get_logger(), "Starting log block with period_ms: %d", period_ms);
 }
 
 void LogBlock::m_stop_log_block(const std::shared_ptr<std_msgs::msg::Empty> msg)
