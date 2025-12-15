@@ -22,7 +22,7 @@ Localization::Localization(
         publisher_options);
 
     m_publish_timer = rclcpp::create_wall_timer(
-        std::chrono::milliseconds(100),
+        std::chrono::milliseconds(50),
         std::bind(&Localization::publish_timer_callback, this),
         m_callback_group,
         node_base_interface.get(),
