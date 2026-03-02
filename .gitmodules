@@ -1,6 +1,0 @@
-[submodule "src/crazyflie_interfaces"]
-	path = src/crazyflie_interfaces
-	url = https://github.com/DynamicSwarms/crazyflie_interfaces.git
-[submodule "src/crazyflie_interfaces_python"]
-	path = src/crazyflie_interfaces_python
-	url = https://github.com/DynamicSwarms/crazyflie_interfaces_python.git

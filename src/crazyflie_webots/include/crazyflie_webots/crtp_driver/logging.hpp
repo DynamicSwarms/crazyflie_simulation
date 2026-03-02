@@ -7,8 +7,10 @@
 #include "crazyflie_webots/webots_driver/webots_crazyflie_driver.hpp"
 #include "crazyflie_webots/crtp_driver/logblock.hpp"
 
-#include "crazyflie_interfaces/msg/generic_log_data.hpp"
-#include "crazyflie_interfaces/msg/log_block.hpp"
+#include "crazyflie_interfaces/msg/log_data_generic.hpp"
+
+#include "crazyflie_interfaces/srv/add_logging.hpp"
+#include "crazyflie_interfaces/srv/remove_logging.hpp"
 
 #include "std_msgs/msg/empty.hpp"
 
@@ -19,8 +21,10 @@ public:
     Logging(
         std::shared_ptr<rclcpp::node_interfaces::NodeBaseInterface> node_base_interface,
         std::shared_ptr<rclcpp::node_interfaces::NodeTopicsInterface> node_topics_interface, 
+        std::shared_ptr<rclcpp::node_interfaces::NodeServicesInterface> node_services_interface, 
         std::shared_ptr<rclcpp::node_interfaces::NodeLoggingInterface> node_logging_interface,
         std::shared_ptr<rclcpp::node_interfaces::NodeTimersInterface> node_timers_interface,
+        std::shared_ptr<rclcpp::node_interfaces::NodeClockInterface> node_clock_interface,
         std::shared_ptr<WebotsCrazyflieDriver> webots_driver
     );
 
@@ -29,7 +33,20 @@ private:
     void download_toc_callback(const std_msgs::msg::Empty::SharedPtr msg);
     void get_toc_info_callback(const std_msgs::msg::Empty::SharedPtr msg);
 
-    void m_create_log_block(const crazyflie_interfaces::msg::LogBlock::SharedPtr msg);
+    void m_add_log_block_service(
+        const std::shared_ptr<crazyflie_interfaces::srv::AddLogging::Request> request,
+        std::shared_ptr<crazyflie_interfaces::srv::AddLogging::Response> response
+    );
+
+    void m_remove_log_block_service(
+        const std::shared_ptr<crazyflie_interfaces::srv::RemoveLogging::Request> request,
+        std::shared_ptr<crazyflie_interfaces::srv::RemoveLogging::Response> response
+    );
+
+    bool m_create_log_block(
+        const std::string &block_name,
+        const std::vector<std::string> &variables);
+
 
     std::vector<double> m_get_data_callback(const std::string &block_name);
 
@@ -40,6 +57,7 @@ private:
     std::shared_ptr<rclcpp::node_interfaces::NodeTopicsInterface> m_topics_interface;
     std::shared_ptr<rclcpp::node_interfaces::NodeLoggingInterface> m_logging_interface;
     std::shared_ptr<rclcpp::node_interfaces::NodeTimersInterface> m_timers_interface;
+    std::shared_ptr<rclcpp::node_interfaces::NodeClockInterface> m_clock_interface;
 
     std::weak_ptr<WebotsCrazyflieDriver> m_webots_driver;
 
@@ -47,10 +65,12 @@ private:
 
     std::shared_ptr<rclcpp::Subscription<std_msgs::msg::Empty>> m_downdload_toc_sub;
     std::shared_ptr<rclcpp::Subscription<std_msgs::msg::Empty>> m_get_toc_info_sub;
-    std::shared_ptr<rclcpp::Subscription<crazyflie_interfaces::msg::LogBlock>> m_create_log_block_sub;
+
+    std::shared_ptr<rclcpp::Service<crazyflie_interfaces::srv::AddLogging>> m_add_log_block_server;
+    std::shared_ptr<rclcpp::Service<crazyflie_interfaces::srv::RemoveLogging>> m_remove_log_block_server;
 
     std::shared_ptr<rclcpp::TimerBase> m_publish_state_timer;
-    std::shared_ptr<rclcpp::Publisher<crazyflie_interfaces::msg::GenericLogData>> m_state_publisher;
+    std::shared_ptr<rclcpp::Publisher<crazyflie_interfaces::msg::LogDataGeneric>> m_state_publisher;
 
     std::map<std::string, std::shared_ptr<LogBlock>> m_log_blocks;
     std::map<std::string, std::vector<std::string>> m_log_block_variables;
