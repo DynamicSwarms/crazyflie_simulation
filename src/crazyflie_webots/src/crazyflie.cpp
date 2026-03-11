@@ -33,12 +33,14 @@ class Crazyflie : public rclcpp_lifecycle::LifecycleNode
     , m_generic_commander(std::make_shared<GenericCommander>(
         this->get_node_base_interface(),
         this->get_node_topics_interface(),
+        this->get_node_services_interface(),
         this->get_node_logging_interface(),
         m_wb_driver
     ))
     , m_hl_commander(std::make_shared<HighLevelCommander>(
         this->get_node_base_interface(),
         this->get_node_topics_interface(),
+        this->get_node_services_interface(),
         this->get_node_logging_interface(),
         m_wb_driver
     ))
@@ -52,8 +54,10 @@ class Crazyflie : public rclcpp_lifecycle::LifecycleNode
     , m_logging(std::make_shared<Logging>(
         this->get_node_base_interface(),
         this->get_node_topics_interface(),
+        this->get_node_services_interface(),
         this->get_node_logging_interface(),
         this->get_node_timers_interface(),
+        this->get_node_clock_interface(),
         m_wb_driver
     ))
     , m_parameters(std::make_shared<Parameters>(

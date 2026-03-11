@@ -4,9 +4,9 @@
 
 #include "crazyflie_webots/webots_driver/webots_crazyflie_driver.hpp"
 
-#include "crazyflie_interfaces/msg/takeoff.hpp"
-#include "crazyflie_interfaces/msg/land.hpp"
-#include "crazyflie_interfaces/msg/go_to.hpp"
+#include "crazyflie_interfaces/srv/land.hpp"
+#include "crazyflie_interfaces/srv/takeoff.hpp"
+#include "crazyflie_interfaces/srv/go_to.hpp"
 
 
 class HighLevelCommander {
@@ -14,16 +14,24 @@ public:
     HighLevelCommander(
         std::shared_ptr<rclcpp::node_interfaces::NodeBaseInterface> node_base_interface,
         std::shared_ptr<rclcpp::node_interfaces::NodeTopicsInterface> node_topics_interface, 
+        std::shared_ptr<rclcpp::node_interfaces::NodeServicesInterface> node_services_interface,
         std::shared_ptr<rclcpp::node_interfaces::NodeLoggingInterface> node_logging_interface,
         std::shared_ptr<WebotsCrazyflieDriver> webots_driver
     );
 
 private: 
 
-    void land_callback(const crazyflie_interfaces::msg::Land::SharedPtr msg);
-    void takeoff_callback(const crazyflie_interfaces::msg::Takeoff::SharedPtr msg);
-    void goto_callback(const crazyflie_interfaces::msg::GoTo::SharedPtr msg);
-    
+    void land_service(
+        const crazyflie_interfaces::srv::Land::Request::SharedPtr request, 
+        crazyflie_interfaces::srv::Land::Response::SharedPtr response);
+
+    void takeoff_service(
+        const crazyflie_interfaces::srv::Takeoff::Request::SharedPtr request, 
+        crazyflie_interfaces::srv::Takeoff::Response::SharedPtr response);
+
+    void goto_service(
+        const crazyflie_interfaces::srv::GoTo::Request::SharedPtr request, 
+        crazyflie_interfaces::srv::GoTo::Response::SharedPtr response);
 
 private: 
     std::shared_ptr<rclcpp::node_interfaces::NodeLoggingInterface> m_logging_interface;
@@ -31,8 +39,8 @@ private:
     std::weak_ptr<WebotsCrazyflieDriver> m_webots_driver;
     
     std::shared_ptr<rclcpp::CallbackGroup> m_callback_group;
-
-    std::shared_ptr<rclcpp::Subscription<crazyflie_interfaces::msg::Land>> m_land_sub;
-    std::shared_ptr<rclcpp::Subscription<crazyflie_interfaces::msg::Takeoff>> m_takeoff_sub;
-    std::shared_ptr<rclcpp::Subscription<crazyflie_interfaces::msg::GoTo>> m_goto_sub;
+    
+    std::shared_ptr<rclcpp::Service<crazyflie_interfaces::srv::Land>> m_land_service;
+    std::shared_ptr<rclcpp::Service<crazyflie_interfaces::srv::Takeoff>> m_takeoff_service;
+    std::shared_ptr<rclcpp::Service<crazyflie_interfaces::srv::GoTo>> m_goto_service;
 };
