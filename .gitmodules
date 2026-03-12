@@ -1,0 +1,3 @@
+[submodule "src/crazyflie_simulation/quadcopter_model"]
+	path = src/crazyflie_simulation/quadcopter_model
+	url = https://github.com/DynamicSwarms/quadcopter_model.git
