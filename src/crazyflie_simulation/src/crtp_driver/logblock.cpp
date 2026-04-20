@@ -36,12 +36,13 @@ LogBlock::LogBlock(
 
 void LogBlock::start_log_block(int period_ms)
 {
-    m_publish_log_data_timer = rclcpp::create_wall_timer(
+    m_publish_log_data_timer = rclcpp::create_timer(
+        m_base_interface,
+        m_timers_interface,
+        m_clock_interface->get_clock(),
         std::chrono::milliseconds(period_ms),
         std::bind(&LogBlock::m_publish_log_data, this),
-        m_callback_group,
-        m_base_interface.get(),
-        m_timers_interface.get()
+        m_callback_group
     );
     RCLCPP_INFO(m_logging_interface->get_logger(), "Starting log block with period_ms: %d", period_ms);
 }

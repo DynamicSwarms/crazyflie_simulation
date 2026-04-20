@@ -8,7 +8,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     gateway = Node(
-        package="crazyflie_webots_gateway",
+        package="crazyflie_simulation_gateway",
         executable="gateway",
         output="screen",
     )
@@ -18,12 +18,18 @@ def generate_launch_description():
             [
                 FindExecutable(name="ros2"),
                 " service call ",
-                "/crazyflie_webots_gateway/add_crazyflie  ",
-                "crazyflie_webots_gateway_interfaces/srv/WebotsCrazyflie ",
-                '"{id: 0}"',
+                "/crazyflie_simulation_gateway/add_crazyflie  ",
+                "crazyflie_interfaces/srv/AddCrazyflie ",
+                '"{uri: "sim://0"}"',
             ]
         ],
         shell=True,
+    )
+
+    move_crazyflie = Node(
+        package="crazyflie_simulation_examples",
+        executable="crazyflie",
+        output="screen",
     )
 
     return LaunchDescription(
@@ -38,5 +44,6 @@ def generate_launch_description():
                     ],
                 )
             ),
+            move_crazyflie,
         ]
     )

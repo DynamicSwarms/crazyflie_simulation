@@ -102,4 +102,15 @@ install(TARGETS crazyflie_component DESTINATION lib)
 install(TARGETS crazyflie 
   DESTINATION lib/${PROJECT_NAME})
 
+# Install public headers so gateway can include them
+install(
+  DIRECTORY include/
+  DESTINATION include
+)
+install(
+  DIRECTORY quadcopter_model/include/
+  DESTINATION include
+)
+ament_export_include_directories(include)
+
 ament_package()

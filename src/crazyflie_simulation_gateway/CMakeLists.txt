@@ -12,6 +12,9 @@ find_package(rclcpp_lifecycle REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(lifecycle_msgs REQUIRED)
 find_package(crazyflie_interfaces REQUIRED)
+find_package(crazyflie_simulation REQUIRED)
+find_package(Eigen3 REQUIRED)
+
 
 add_executable(gateway src/gateway.cpp)
 target_include_directories(gateway PUBLIC
@@ -22,7 +25,8 @@ target_compile_features(gateway PUBLIC c_std_99 cxx_std_17)  # Require C99 and C
 ament_target_dependencies(gateway
   rclcpp
   rclcpp_components
-  crazyflie_interfaces)
+  crazyflie_interfaces
+  crazyflie_simulation)
 
 
 set(GATEWAY_DEPS
@@ -39,7 +43,21 @@ ament_target_dependencies(gateway_deps
   lifecycle_msgs)
 
 
-target_link_libraries(gateway gateway_deps)
+find_library(CRAZYFLIE_COMPONENT_LIB
+  NAMES crazyflie_component
+  PATHS ${crazyflie_simulation_DIR}/../../../lib
+  NO_DEFAULT_PATH
+)
+
+if(NOT CRAZYFLIE_COMPONENT_LIB)
+  message(FATAL_ERROR "Could not find crazyflie_component library. Did you build/install crazyflie_simulation?")
+endif()
+
+target_link_libraries(gateway
+  gateway_deps
+  Eigen3::Eigen
+  ${CRAZYFLIE_COMPONENT_LIB}
+)
 
 install(TARGETS gateway
   DESTINATION lib/${PROJECT_NAME})

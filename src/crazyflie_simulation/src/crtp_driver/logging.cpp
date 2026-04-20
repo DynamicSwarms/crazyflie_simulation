@@ -61,12 +61,13 @@ Logging::Logging(
         m_callback_group
     );
     
-    m_publish_state_timer = rclcpp::create_wall_timer(
-        std::chrono::milliseconds(100),
+    m_publish_state_timer = rclcpp::create_timer(
+        node_base_interface,
+        node_timers_interface,
+        node_clock_interface->get_clock(),
+        std::chrono::milliseconds(500),
         std::bind(&Logging::publish_state_timer_callback, this),
-        m_callback_group,
-        node_base_interface.get(),
-        node_timers_interface.get()
+        m_callback_group
     );
 
     auto publisher_options = rclcpp::PublisherOptions();

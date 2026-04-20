@@ -12,8 +12,10 @@ public:
         std::shared_ptr<rclcpp::node_interfaces::NodeBaseInterface> node_base_interface, 
         std::shared_ptr<rclcpp::node_interfaces::NodeLoggingInterface> node_logging_interface,
         std::shared_ptr<rclcpp::node_interfaces::NodeTopicsInterface> node_topics_interface,
-        std::shared_ptr<rclcpp::node_interfaces::NodeTimersInterface> node_timers_interface,   
-        std::shared_ptr<Simulation> simulation
+        std::shared_ptr<rclcpp::node_interfaces::NodeTimersInterface> node_timers_interface, 
+        std::shared_ptr<rclcpp::node_interfaces::NodeClockInterface> node_clock_interface, 
+        std::shared_ptr<Simulation> simulation,
+        bool publish_to_cf
     );
 private: 
     void publish_timer_callback();

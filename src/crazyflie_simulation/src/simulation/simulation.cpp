@@ -30,6 +30,8 @@ Simulation::Simulation(const std::string& name, Eigen::Affine3d initial_pose)
 
     m_cmd.t = 0.0;
     m_cmd.thrusts = quadcopter::Vector<4>::Zero();
+
+    m_controller->set_target_pose(initial_pose);
 }
 
 Simulation::~Simulation()

@@ -15,7 +15,12 @@
 #include "crazyflie_interfaces/srv/add_crazyflie.hpp"
 #include "crazyflie_interfaces/srv/remove_crazyflie.hpp"
 
+#include "crazyflie_interfaces/msg/pose_stamped_array.hpp"
+
 #include "crazyflie_simulation_gateway/crazyflie_lifecycle_client.hpp"
+
+#include "crazyflie_simulation/crazyflie.hpp"
+
 
 #include "signal.h"
 
@@ -75,6 +80,15 @@ public:
     
       m_check_crazyflie_processes_timer = this->create_wall_timer(std::chrono::milliseconds(100),
         std::bind(&Gateway::check_crazyflie_processes, this),
+        m_gateway_callback_group);
+
+      m_positions_publisher = this->create_publisher<crazyflie_interfaces::msg::PoseStampedArray>("/cf_positions", rclcpp::QoS(10));
+      m_publish_positions_timer = rclcpp::create_timer(
+        this->get_node_base_interface(),
+        this->get_node_timers_interface(),
+        this->get_clock(),
+        std::chrono::milliseconds(50), // 20Hz
+        std::bind(&Gateway::publish_positions, this),
         m_gateway_callback_group);
 
       m_factory = create_component_factory("crazyflie_simulation", "Crazyflie");
@@ -213,14 +227,57 @@ public:
       if (it != m_crazyflies.end())
       {
           RCLCPP_INFO(this->get_logger(), "Detected shutdown on crazyflie with id %d.", id);
+          std::get<1>(it->second).executor->cancel();
+          std::get<1>(it->second).thread.join();
           m_crazyflies.erase(it);
       }
-
+      
       if (m_crazyflies.empty() && sigint_received.load())
       {
           RCLCPP_INFO(this->get_logger(), "All crazyflie processes have shut down. Proceeding with gateway shutdown.");
           gateway_shutdown_done.store(true);
       }      
+    }
+
+    void publish_positions()
+    {
+        std::lock_guard<std::mutex> lock(m_crazyflies_mutex);
+
+        crazyflie_interfaces::msg::PoseStampedArray pose_array_msg;
+        pose_array_msg.header.stamp = this->now();
+        pose_array_msg.header.frame_id = "world";
+
+        for (const auto & pair : m_crazyflies)
+        {
+            int id = pair.first;
+            auto node_wrapper = std::get<0>(pair.second);
+            auto node_any = node_wrapper.get_node_instance();
+            auto crazyflie_ptr = std::static_pointer_cast<Crazyflie>(node_any);
+
+            if (!crazyflie_ptr) {
+                RCLCPP_ERROR(this->get_logger(), "Failed to cast node to Crazyflie for id %d.", id);
+                continue;
+            }
+
+            geometry_msgs::msg::PoseStamped pose_msg;
+
+            //TODO add frame id
+            pose_msg.header.stamp = this->now();
+            pose_msg.header.frame_id = "cf" + std::to_string(id);
+            Eigen::Affine3d pose = crazyflie_ptr->get_pose();
+            pose_msg.pose.position.x = pose.translation().x();
+            pose_msg.pose.position.y = pose.translation().y();
+            pose_msg.pose.position.z = pose.translation().z();
+            Eigen::Quaterniond quat(pose.rotation());
+            pose_msg.pose.orientation.x = quat.x();
+            pose_msg.pose.orientation.y = quat.y();
+            pose_msg.pose.orientation.z = quat.z();
+            pose_msg.pose.orientation.w = quat.w();
+
+            pose_array_msg.poses.push_back(pose_msg);
+        }
+
+        m_positions_publisher->publish(pose_array_msg);
     }
 
 private: 
@@ -263,7 +320,11 @@ private:
                 << initial_pose.position.z << "]";
       
       add_parameter("initial_position", pos_stream.str());
+      add_parameter("publish_to_cf", "false"); // The gateway should publish all positions together
   
+      bool use_sim_time = this->get_parameter("use_sim_time").as_bool();
+      add_parameter("use_sim_time", use_sim_time ? "true" : "false");
+
       auto options = rclcpp::NodeOptions()
         .arguments(remap_rules);
         return options;
@@ -343,6 +404,9 @@ private:
     std::shared_ptr<rclcpp::Service<crazyflie_interfaces::srv::RemoveCrazyflie>> m_remove_crazyflie_service; 
     
     std::shared_ptr<rclcpp::TimerBase> m_check_crazyflie_processes_timer;
+
+    std::shared_ptr<rclcpp::Publisher<crazyflie_interfaces::msg::PoseStampedArray>> m_positions_publisher;
+    std::shared_ptr<rclcpp::TimerBase> m_publish_positions_timer;
 
     std::unique_ptr<class_loader::ClassLoader> m_loader;
     std::shared_ptr<rclcpp_components::NodeFactory> m_factory;

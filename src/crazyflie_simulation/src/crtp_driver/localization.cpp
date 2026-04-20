@@ -7,7 +7,9 @@ Localization::Localization(
     std::shared_ptr<rclcpp::node_interfaces::NodeLoggingInterface> node_logging_interface,
     std::shared_ptr<rclcpp::node_interfaces::NodeTopicsInterface> node_topics_interface,
     std::shared_ptr<rclcpp::node_interfaces::NodeTimersInterface> node_timers_interface,   
-    std::shared_ptr<Simulation> simulation)
+    std::shared_ptr<rclcpp::node_interfaces::NodeClockInterface> node_clock_interface,
+    std::shared_ptr<Simulation> simulation,
+    bool publish_to_cf)
 : m_logging_interface(node_logging_interface)
 , m_simulation(simulation)
 , m_callback_group(node_base_interface->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive))
@@ -15,20 +17,22 @@ Localization::Localization(
     auto publisher_options = rclcpp::PublisherOptions();
     publisher_options.callback_group = m_callback_group;
 
-    m_pose_publisher = rclcpp::create_publisher<crazyflie_interfaces::msg::PoseStampedArray>(
-        node_topics_interface,
-        "/cf_positions",
-        rclcpp::QoS(10),
-        publisher_options);
+    if (publish_to_cf) {
+        m_pose_publisher = rclcpp::create_publisher<crazyflie_interfaces::msg::PoseStampedArray>(
+            node_topics_interface,
+            "/cf_positions",
+            rclcpp::QoS(10),
+            publisher_options);
 
-    m_publish_timer = rclcpp::create_wall_timer(
-        std::chrono::milliseconds(50),
-        std::bind(&Localization::publish_timer_callback, this),
-        m_callback_group,
-        node_base_interface.get(),
-        node_timers_interface.get()
-    );
-
+        m_publish_timer = rclcpp::create_timer(
+            node_base_interface,
+            node_timers_interface,
+            node_clock_interface->get_clock(),
+            std::chrono::milliseconds(50),
+            std::bind(&Localization::publish_timer_callback, this),
+            m_callback_group
+        );
+    }
 
     RCLCPP_DEBUG(node_logging_interface->get_logger(), "Localization initialized");
 }
