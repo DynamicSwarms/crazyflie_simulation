@@ -10,6 +10,7 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
@@ -75,6 +76,7 @@ target_link_libraries(crazyflie
 ament_target_dependencies(crazyflie 
   rclcpp_lifecycle
   rclcpp
+  rclcpp_components
   crazyflie_interfaces)
 
 target_include_directories(crazyflie PUBLIC
@@ -82,6 +84,19 @@ target_include_directories(crazyflie PUBLIC
   $<INSTALL_INTERFACE:include>)
 target_compile_features(crazyflie PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 
+# Also register crazyflie as component
+# create ament index resource which references the libraries in the binary dir
+add_library(crazyflie_component SHARED src/crazyflie.cpp)
+target_compile_definitions(crazyflie_component
+  PRIVATE "COMPOSITION_BUILDING_DLL")
+target_link_libraries(crazyflie_component simulation_lib crtp_driver_lib)
+ament_target_dependencies(crazyflie_component
+  rclcpp
+  rclcpp_lifecycle
+  rclcpp_components)
+
+rclcpp_components_register_nodes(crazyflie_component "Crazyflie")
+install(TARGETS crazyflie_component DESTINATION lib)
 
 ## Finally build all nodes
 install(TARGETS crazyflie 

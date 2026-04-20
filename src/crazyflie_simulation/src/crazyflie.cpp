@@ -68,7 +68,7 @@ class Crazyflie : public rclcpp_lifecycle::LifecycleNode
     {    
       m_simulation_callback_group = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
       m_simulation_step_timer = this->create_wall_timer(
-        std::chrono::milliseconds(32), // ~30Hz, matching Webots default timestep of 32ms
+        std::chrono::milliseconds(100),
         std::bind(&Crazyflie::simulation_timer_callback, this),
         m_simulation_callback_group);
 
@@ -94,7 +94,7 @@ class Crazyflie : public rclcpp_lifecycle::LifecycleNode
   void simulation_timer_callback()
   {
     if (m_simulation) {
-      m_simulation->update(0.032); // Update the simulation with a fixed timestep of 32ms
+      m_simulation->update(0.1); // Update the simulation with a fixed timestep of 32ms
     }
   }
   ~Crazyflie()
@@ -205,3 +205,6 @@ int main(int argc, char **argv)
   rclcpp::shutdown();
   return 0;
 }
+
+#include "rclcpp_components/register_node_macro.hpp"
+RCLCPP_COMPONENTS_REGISTER_NODE(Crazyflie)
