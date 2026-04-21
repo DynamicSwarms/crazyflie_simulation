@@ -12,6 +12,7 @@ def generate_launch_description():
         executable="gateway",
         output="screen",
         sigterm_timeout="10.0",
+        parameters=[{"use_sim_time": False}],
     )
 
     crazyflies = Node(

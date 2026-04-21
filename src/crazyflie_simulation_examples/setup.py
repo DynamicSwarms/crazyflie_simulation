@@ -39,6 +39,7 @@ setup(
         "console_scripts": [
             "crazyflie = crazyflie_simulation_examples.crazyflie_example:main",
             "crazyflie_spawner = crazyflie_simulation_examples.crazyflie_spawner:main",
+            "clock = crazyflie_simulation_examples.clock:main",
         ],
     },
 )

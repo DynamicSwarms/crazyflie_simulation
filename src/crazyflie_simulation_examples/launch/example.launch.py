@@ -6,26 +6,12 @@ from launch.event_handlers import OnProcessStart
 from launch_ros.actions import Node
 
 
-from tracetools_launch.action import Trace
-
-
 def generate_launch_description():
-
-    trace = Trace(
-        session_name="crazy",
-        events_kernel=[],
-        # events_kernel=[
-        #    "sched_switch",
-        #    "sched_wakeup",
-        #    "sched_process_fork",
-        #    "sys_enter_futex",
-        # ],
-    )
-
     gateway = Node(
         package="crazyflie_simulation_gateway",
         executable="gateway",
         output="screen",
+        parameters=[{"use_sim_time": False}],
     )
 
     spawn_crazyflie = ExecuteProcess(
@@ -49,7 +35,6 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
-            trace,
             gateway,
             RegisterEventHandler(
                 OnProcessStart(
