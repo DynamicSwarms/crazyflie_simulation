@@ -86,17 +86,17 @@ target_compile_features(crazyflie PUBLIC c_std_99 cxx_std_17)  # Require C99 and
 
 # Also register crazyflie as component
 # create ament index resource which references the libraries in the binary dir
-add_library(crazyflie_component SHARED src/crazyflie.cpp)
-target_compile_definitions(crazyflie_component
+add_library(crazyflie_sim_component SHARED src/crazyflie.cpp)
+target_compile_definitions(crazyflie_sim_component
   PRIVATE "COMPOSITION_BUILDING_DLL")
-target_link_libraries(crazyflie_component simulation_lib crtp_driver_lib)
-ament_target_dependencies(crazyflie_component
+target_link_libraries(crazyflie_sim_component simulation_lib crtp_driver_lib)
+ament_target_dependencies(crazyflie_sim_component
   rclcpp
   rclcpp_lifecycle
   rclcpp_components)
 
-rclcpp_components_register_nodes(crazyflie_component "Crazyflie")
-install(TARGETS crazyflie_component DESTINATION lib)
+rclcpp_components_register_nodes(crazyflie_sim_component "Crazyflie")
+install(TARGETS crazyflie_sim_component DESTINATION lib)
 
 ## Finally build all nodes
 install(TARGETS crazyflie 
@@ -112,5 +112,19 @@ install(
   DESTINATION include
 )
 ament_export_include_directories(include)
+
+install(
+  TARGETS simulation_lib crtp_driver_lib quadcopter_model crazyflie_sim_component
+  EXPORT export_crazyflie_simulation
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+  INCLUDES DESTINATION include
+)
+
+ament_export_include_directories(include)
+ament_export_libraries(simulation_lib crtp_driver_lib quadcopter_model crazyflie_sim_component)
+ament_export_targets(export_crazyflie_simulation HAS_LIBRARY_TARGET)
+ament_export_dependencies(rclcpp crazyflie_interfaces Eigen3)
 
 ament_package()

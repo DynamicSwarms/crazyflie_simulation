@@ -8,8 +8,10 @@
 Crazyflie::Crazyflie(const rclcpp::NodeOptions &options)
     : rclcpp_lifecycle::LifecycleNode("crazyflie", options)
     , p_id(declare_parameter("id", rclcpp::ParameterValue(0), rcl_interfaces::msg::ParameterDescriptor().set__read_only(true)).get<int>())
-    , p_initial_position(this->declare_parameter("initial_position", rclcpp::ParameterValue(std::vector<double>{0.0, 0.0, 0.0})).get<std::vector<double>>())
-    , p_publish_to_cf(this->declare_parameter("publish_to_cf", rclcpp::ParameterValue(true)).get<bool>())
+    , p_initial_position(this->declare_parameter("initial_position", rclcpp::ParameterValue(std::vector<double>{0.0, 0.0, 0.0}), rcl_interfaces::msg::ParameterDescriptor().set__read_only(true)).get<std::vector<double>>())
+    , p_publish_to_cf(this->declare_parameter("publish_to_cf", rclcpp::ParameterValue(true), rcl_interfaces::msg::ParameterDescriptor().set__read_only(true)).get<bool>())
+    , p_update_period_ms(this->declare_parameter("update_period_ms", rclcpp::ParameterValue(50), rcl_interfaces::msg::ParameterDescriptor().set__read_only(true)).get<int>())
+    , p_simulation_integrator_dt(this->declare_parameter("simulation_integrator_dt", rclcpp::ParameterValue(0.02), rcl_interfaces::msg::ParameterDescriptor().set__read_only(true)).get<double>())
     , m_simulation(std::make_shared<Simulation>("cf"+ std::to_string(p_id), Eigen::Affine3d(Eigen::Translation3d(p_initial_position[0], p_initial_position[1], p_initial_position[2]))))
     , m_console(std::make_shared<Console>(
         this->get_node_base_interface(),
@@ -62,7 +64,7 @@ Crazyflie::Crazyflie(const rclcpp::NodeOptions &options)
         this->get_node_base_interface(),
         this->get_node_timers_interface(),
         this->get_clock(),
-        std::chrono::milliseconds(100),
+        std::chrono::milliseconds(p_update_period_ms),
         std::bind(&Crazyflie::simulation_timer_callback, this),
         m_simulation_callback_group);
 
@@ -83,7 +85,6 @@ Crazyflie::Crazyflie(const rclcpp::NodeOptions &options)
 
 Crazyflie::~Crazyflie()
 { 
-
   m_simulation_step_timer->cancel();
   m_simulation_step_timer.reset();
   m_simulation.reset();
@@ -108,7 +109,8 @@ Crazyflie::get_pose() const
 void Crazyflie::simulation_timer_callback()
 {
   if (m_simulation) {
-    m_simulation->update(0.1); // Update the simulation with a fixed timestep of 32ms
+    double period_s = static_cast<double>(p_update_period_ms) / 1000.0;
+    m_simulation->update(period_s);
   }
 }
 

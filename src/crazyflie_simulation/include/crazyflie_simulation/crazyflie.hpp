@@ -46,6 +46,8 @@ private:
   uint8_t p_id{};
   std::vector<double> p_initial_position;
   bool p_publish_to_cf{true};
+  int p_update_period_ms{50};
+  double p_simulation_integrator_dt{0.02};
 
   std::shared_ptr<rclcpp::CallbackGroup> m_simulation_callback_group;
   std::shared_ptr<rclcpp::TimerBase> m_simulation_step_timer;

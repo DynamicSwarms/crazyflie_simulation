@@ -28,6 +28,7 @@ using namespace std::chrono_literals;
 
 std::atomic_bool sigint_received(false);
 std::atomic_bool gateway_shutdown_done(false);
+std::atomic<int> gateway_shutdown_count_remaining{-1};
 
 class GatewayException : public std::runtime_error
 {
@@ -40,18 +41,46 @@ struct DedicatedExecutorWrapper
 {
   std::shared_ptr<rclcpp::Executor> executor;
   std::thread thread;
-  std::atomic_bool thread_initialized;
+  std::atomic_bool thread_initialized{false};
 
   /// Constructor for the wrapper.
   /// This is necessary as atomic variables don't have copy/move operators
   /// implemented so this structure is not copyable/movable by default
   explicit DedicatedExecutorWrapper(std::shared_ptr<rclcpp::Executor> exec)
-  : executor(exec),
-    thread_initialized(false)
+  : executor(std::move(exec))
   {
+  }
+
+  DedicatedExecutorWrapper(const DedicatedExecutorWrapper &) = delete;
+  DedicatedExecutorWrapper & operator=(const DedicatedExecutorWrapper &) = delete;
+
+  DedicatedExecutorWrapper(DedicatedExecutorWrapper && other) noexcept
+  : executor(std::move(other.executor)),
+    thread(std::move(other.thread)),
+    thread_initialized(other.thread_initialized.load(std::memory_order_relaxed))
+  {
+    other.thread_initialized.store(false, std::memory_order_relaxed);
   }
 };
 
+class CrazyflieEntry
+{
+public:
+  rclcpp_components::NodeInstanceWrapper node;
+  DedicatedExecutorWrapper executor_wrapper;
+  std::shared_ptr<CrazyflieLifecycleClient> lifecycle_client;
+
+  /// Constructor to initialize all members
+  CrazyflieEntry(
+    rclcpp_components::NodeInstanceWrapper n,
+    std::shared_ptr<rclcpp::Executor> exec,
+    std::shared_ptr<CrazyflieLifecycleClient> client)
+  : node(std::move(n)),
+    executor_wrapper(std::move(exec)),
+    lifecycle_client(std::move(client))
+  {
+  }
+};
 
 class Gateway : public rclcpp::Node
 {
@@ -59,7 +88,7 @@ public:
     Gateway()
     : Node("crazyflie_simulation_gateway")
     {
-      m_lifecycle_client_callback_group = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+      m_lifecycle_client_callback_group = this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
 
 
       auto service_qos = rmw_qos_profile_services_default;
@@ -82,14 +111,17 @@ public:
         std::bind(&Gateway::check_crazyflie_processes, this),
         m_gateway_callback_group);
 
-      m_positions_publisher = this->create_publisher<crazyflie_interfaces::msg::PoseStampedArray>("/cf_positions", rclcpp::QoS(10));
+      m_publish_positions_callback_group = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+      auto publisher_options = rclcpp::PublisherOptions();
+      publisher_options.callback_group = m_publish_positions_callback_group;
+      m_positions_publisher = this->create_publisher<crazyflie_interfaces::msg::PoseStampedArray>("/cf_positions", rclcpp::QoS(10), publisher_options);
       m_publish_positions_timer = rclcpp::create_timer(
         this->get_node_base_interface(),
         this->get_node_timers_interface(),
         this->get_clock(),
-        std::chrono::milliseconds(50), // 20Hz
+        std::chrono::milliseconds(100),
         std::bind(&Gateway::publish_positions, this),
-        m_gateway_callback_group);
+        m_publish_positions_callback_group);
 
       m_factory = create_component_factory("crazyflie_simulation", "Crazyflie");
 
@@ -102,18 +134,15 @@ public:
     {
       std::lock_guard<std::mutex> lock(m_crazyflies_mutex);
 
-      static bool shutdown_completed = false;
-      if (sigint_received.load() && !shutdown_completed)
+      if (sigint_received.load())
       {
-         shutdown_completed = true;
          if (m_crazyflies.empty()) gateway_shutdown_done.store(true);
-         else RCLCPP_INFO(this->get_logger(), "Shutting down all crazyflies due to SIGINT.");
+         else RCLCPP_INFO(this->get_logger(), "Shutting down all crazyflies due to SIGINT. This might take a moment.");
          for (auto &pair : m_crazyflies)
          {
-            RCLCPP_INFO(this->get_logger(), "Shutting down crazyflie with id %d.", pair.first);
-            auto cf_client = std::get<2>(pair.second);
-            cf_client->shutdown_crazyflie_async();
+            pair.second.lifecycle_client->shutdown_crazyflie_async();
          }
+         m_check_crazyflie_processes_timer->cancel();
       }
     }
 
@@ -159,9 +188,9 @@ public:
             id,
             std::bind(&Gateway::on_crazyflie_shutdown, this, std::placeholders::_1));
 
-        auto entry = m_crazyflies.emplace(id, std::make_tuple(node, exec, cf_lifecycle_client));
+        auto entry = m_crazyflies.emplace(id, CrazyflieEntry(node, exec, cf_lifecycle_client));
 
-        DedicatedExecutorWrapper & wrapper = std::get<1>(entry.first->second);
+        DedicatedExecutorWrapper & wrapper = entry.first->second.executor_wrapper;
         wrapper.executor = exec;
 
         auto & thread_initialized = wrapper.thread_initialized;
@@ -204,10 +233,10 @@ public:
       auto cf_entry = m_crazyflies.find(id);
       if (cf_entry != m_crazyflies.end())
       {
-          if (!std::get<1>(cf_entry->second).thread_initialized) rclcpp::sleep_for(std::chrono::milliseconds(1)); // Race condition of add and remove
-          std::get<2>(cf_entry->second)->shutdown_crazyflie_sync(100ms);
-          std::get<1>(cf_entry->second).executor->cancel();
-          std::get<1>(cf_entry->second).thread.join();
+          if (!cf_entry->second.executor_wrapper.thread_initialized) rclcpp::sleep_for(std::chrono::milliseconds(1)); // Race condition of add and remove
+          cf_entry->second.lifecycle_client->shutdown_crazyflie_sync(100ms);
+          cf_entry->second.executor_wrapper.executor->cancel();
+          cf_entry->second.executor_wrapper.thread.join();
           m_crazyflies.erase(cf_entry);
           response->success = true;
           response->msg = "Crazyflie removed successfully";
@@ -221,22 +250,28 @@ public:
 
     void on_crazyflie_shutdown(int id)
     {
-      std::lock_guard<std::mutex> lock(m_crazyflies_mutex);
-
+      RCLCPP_DEBUG(this->get_logger(), "Detected shutdown on crazyflie with id %d.", id);
+      std::unique_lock<std::mutex> lock(m_crazyflies_mutex);
+   
       auto it = m_crazyflies.find(id);
       if (it != m_crazyflies.end())
       {
-          RCLCPP_INFO(this->get_logger(), "Detected shutdown on crazyflie with id %d.", id);
-          std::get<1>(it->second).executor->cancel();
-          std::get<1>(it->second).thread.join();
+          it->second.executor_wrapper.executor->cancel();
+          it->second.executor_wrapper.thread.join();
+
+          auto tuple_to_destroy = std::move(it->second);
           m_crazyflies.erase(it);
+          if (m_crazyflies.empty() && sigint_received.load())
+          {
+            gateway_shutdown_done.store(true);
+          }
+          gateway_shutdown_count_remaining.store(m_crazyflies.size());
+          lock.unlock(); 
+          // Now the tuple will go out of scope and be destroyed, 
+          // this callback is in reentrant callback group so all can be removed simultaneously
+      } else {
+          RCLCPP_WARN(this->get_logger(), "Received shutdown notification for unknown crazyflie with id %d.", id);
       }
-      
-      if (m_crazyflies.empty() && sigint_received.load())
-      {
-          RCLCPP_INFO(this->get_logger(), "All crazyflie processes have shut down. Proceeding with gateway shutdown.");
-          gateway_shutdown_done.store(true);
-      }      
     }
 
     void publish_positions()
@@ -250,8 +285,7 @@ public:
         for (const auto & pair : m_crazyflies)
         {
             int id = pair.first;
-            auto node_wrapper = std::get<0>(pair.second);
-            auto node_any = node_wrapper.get_node_instance();
+            auto node_any = pair.second.node.get_node_instance();
             auto crazyflie_ptr = std::static_pointer_cast<Crazyflie>(node_any);
 
             if (!crazyflie_ptr) {
@@ -260,8 +294,6 @@ public:
             }
 
             geometry_msgs::msg::PoseStamped pose_msg;
-
-            //TODO add frame id
             pose_msg.header.stamp = this->now();
             pose_msg.header.frame_id = "cf" + std::to_string(id);
             Eigen::Affine3d pose = crazyflie_ptr->get_pose();
@@ -405,6 +437,7 @@ private:
     
     std::shared_ptr<rclcpp::TimerBase> m_check_crazyflie_processes_timer;
 
+    std::shared_ptr<rclcpp::CallbackGroup> m_publish_positions_callback_group;
     std::shared_ptr<rclcpp::Publisher<crazyflie_interfaces::msg::PoseStampedArray>> m_positions_publisher;
     std::shared_ptr<rclcpp::TimerBase> m_publish_positions_timer;
 
@@ -412,7 +445,7 @@ private:
     std::shared_ptr<rclcpp_components::NodeFactory> m_factory;
 
     std::mutex m_crazyflies_mutex;
-    std::map<int, std::tuple<rclcpp_components::NodeInstanceWrapper, DedicatedExecutorWrapper, std::shared_ptr<CrazyflieLifecycleClient>>> m_crazyflies;
+    std::map<int, CrazyflieEntry> m_crazyflies;
 };
 
 
@@ -421,11 +454,22 @@ void sigint_handler(int signum)
 {
     (void)signum;
     sigint_received.store(true);
-    int safey_counter = 0;
+    int safety_counter = 0;
+    int last_remaining = gateway_shutdown_count_remaining.load();
+    auto start_time = std::chrono::steady_clock::now();
     while (!gateway_shutdown_done.load())
     { 
-        safey_counter++;
-        if (safey_counter > 500) break;// 3 seconds timeout
+        int remaining = gateway_shutdown_count_remaining.load();
+        if (remaining != last_remaining) safety_counter = 0; // reset counter if there is progress
+        last_remaining = remaining;
+
+        if (start_time + std::chrono::milliseconds(500) < std::chrono::steady_clock::now()) {
+            std::cerr << "Waiting for gateway to shut down cleanly after SIGINT. Remaining crazyflies: " << remaining << std::endl;
+            start_time = std::chrono::steady_clock::now();
+        }
+
+        safety_counter++;
+        if (safety_counter > 500) break;// 3 seconds timeout
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     if (gateway_shutdown_done.load()) std::cerr << "Gateway shut down cleanly after SIGINT." << std::endl;

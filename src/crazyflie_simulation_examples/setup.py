@@ -11,7 +11,14 @@ data_files.append(("share/" + package_name, ["package.xml"]))
 data_files.append(
     (
         "share/" + package_name + "/launch",
-        ["launch/crazyflie_simulation_example.launch.py"],
+        ["launch/example.launch.py"],
+    )
+)
+
+data_files.append(
+    (
+        "share/" + package_name + "/launch",
+        ["launch/scalability.launch.py"],
     )
 )
 
@@ -30,7 +37,8 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "crazyflie = crazyflie_simulation_examples.crazyflie_example:main"
+            "crazyflie = crazyflie_simulation_examples.crazyflie_example:main",
+            "crazyflie_spawner = crazyflie_simulation_examples.crazyflie_spawner:main",
         ],
     },
 )

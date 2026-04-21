@@ -9,7 +9,10 @@
 class Simulation
 {
 public:
-    Simulation(const std::string& name, Eigen::Affine3d initial_pose = Eigen::Affine3d::Identity());
+    Simulation(
+        const std::string& name, 
+        Eigen::Affine3d initial_pose = Eigen::Affine3d::Identity(),
+        double integrator_dt = 0.02);
     ~Simulation();
 
     void update(double d_t);

@@ -2,7 +2,10 @@
 
 #include "crazyflie_simulation/simulation/controller.hpp"
 using namespace quadcopter;
-Simulation::Simulation(const std::string& name, Eigen::Affine3d initial_pose)
+Simulation::Simulation(
+    const std::string& name, 
+    Eigen::Affine3d initial_pose,
+    double integrator_dt)
     : m_name(name)
     , m_cmd()
     , m_quadrotor(std::make_shared<quadcopter::Quadrotor>())
@@ -14,6 +17,8 @@ Simulation::Simulation(const std::string& name, Eigen::Affine3d initial_pose)
     QuadrotorDynamics dynamics(mass, arm_length);
 
     m_quadrotor = std::make_shared<Quadrotor>(dynamics);
+    m_quadrotor->setIntegratorDt(integrator_dt);
+    
     QuadState initial_state;
     initial_state.setZero();
     initial_state.x[QS::POSX] = initial_pose.translation().x();

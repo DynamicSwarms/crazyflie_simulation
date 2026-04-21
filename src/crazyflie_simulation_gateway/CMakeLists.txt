@@ -42,21 +42,9 @@ ament_target_dependencies(gateway_deps
   rclcpp_lifecycle
   lifecycle_msgs)
 
-
-find_library(CRAZYFLIE_COMPONENT_LIB
-  NAMES crazyflie_component
-  PATHS ${crazyflie_simulation_DIR}/../../../lib
-  NO_DEFAULT_PATH
-)
-
-if(NOT CRAZYFLIE_COMPONENT_LIB)
-  message(FATAL_ERROR "Could not find crazyflie_component library. Did you build/install crazyflie_simulation?")
-endif()
-
 target_link_libraries(gateway
   gateway_deps
   Eigen3::Eigen
-  ${CRAZYFLIE_COMPONENT_LIB}
 )
 
 install(TARGETS gateway

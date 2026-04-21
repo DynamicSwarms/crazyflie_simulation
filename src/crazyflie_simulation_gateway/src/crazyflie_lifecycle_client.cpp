@@ -38,6 +38,7 @@ CrazyflieLifecycleClient::~CrazyflieLifecycleClient()
     m_transition_event_sub.reset();
     m_change_state_client.reset();
 }
+
 bool 
 CrazyflieLifecycleClient::wait_for_change_state_service(std::chrono::milliseconds timeout_ms)
 {
