@@ -1,5 +1,5 @@
 import rclpy
-from rclpy.node import Node
+from rclpy.node import Node, SetParametersResult
 from rclpy.time import Time
 
 from rosgraph_msgs.msg import Clock
@@ -13,21 +13,31 @@ class ClockNode(Node):
             self.declare_parameter("rate", 2.0).get_parameter_value().double_value
         )
 
-        # Use wall time as reference so this works even when use_sim_time:=true
-        self.wall_start_ns = self.get_clock().now().nanoseconds
-        self.sim_start_ns = 0  # start sim time at 0
+        self.param_callback_handle = self.add_on_set_parameters_callback(
+            self.on_set_parameters
+        )
 
-        self.timer = self.create_timer(0.01, self.tick)
+        self.ros_ns = 0
+
+        self.timer = self.create_timer(0.1 / self.rate, self.tick)
+        # We aim for a 10Hz clock in the given rate
 
     def tick(self):
-        wall_now_ns = self.get_clock().now().nanoseconds
-        wall_elapsed_ns = wall_now_ns - self.wall_start_ns
-
-        sim_now_ns = int(self.sim_start_ns + self.rate * wall_elapsed_ns)
+        self.ros_ns += 0.1 * 1e9
 
         msg = Clock()
-        msg.clock = Time(nanoseconds=sim_now_ns).to_msg()
+        msg.clock = Time(nanoseconds=self.ros_ns).to_msg()
         self.pub.publish(msg)
+
+    def on_set_parameters(self, params):
+        for param in params:
+            if param.name == "rate":
+                self.rate = param.get_parameter_value().double_value
+                self.timer.cancel()
+                self.timer = self.create_timer(0.1 / self.rate, self.tick)
+                self.get_logger().info(f"Set rate to {self.rate}")
+
+        return SetParametersResult(successful=True)
 
 
 def main():

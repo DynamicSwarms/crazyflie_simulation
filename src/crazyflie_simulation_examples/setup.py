@@ -22,6 +22,13 @@ data_files.append(
     )
 )
 
+data_files.append(
+    (
+        "share/" + package_name + "/config",
+        ["config/flies_config.yaml"],
+    )
+)
+
 
 setup(
     name=package_name,
