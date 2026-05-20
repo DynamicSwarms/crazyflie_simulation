@@ -45,7 +45,7 @@ GenericCommander::cmd_position_callback(const crazyflie_interfaces::msg::Positio
 {
     if (auto simulation = m_simulation.lock()) {
         Eigen::Vector3d target(msg->x, msg->y, msg->z);
-        simulation->set_target_pose(from_xyz_and_yaw(target, msg->yaw));
+        simulation->set_target_pose(from_xyz_and_yaw(target, msg->yaw * 180.0 / M_PI));
     }
 }
 

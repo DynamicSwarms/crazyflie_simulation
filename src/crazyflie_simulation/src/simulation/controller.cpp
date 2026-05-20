@@ -55,14 +55,12 @@ CrazyflieController::m_update(double d_t, Eigen::Affine3d current_pose)
     // Simple P controller for yaw (z-rotation)
     double Kyaw = 0.8; // Proportional gain for yaw
 
-    double current_yaw = Eigen::Quaterniond(current_pose.rotation()).toRotationMatrix()
-                             .eulerAngles(2, 1, 0)[0]; // yaw (Z axis)
+    double current_yaw = std::atan2(current_pose.rotation()(1, 0), current_pose.rotation()(0, 0));
 
-    double target_yaw = Eigen::Quaterniond(m_desired_pose.rotation()).toRotationMatrix()
-                            .eulerAngles(2, 1, 0)[0];
+    double target_yaw = std::atan2(m_desired_pose.rotation()(1, 0), m_desired_pose.rotation()(0, 0));
 
     double yaw_error = target_yaw - current_yaw;
-
+    yaw_error = std::atan2(std::sin(yaw_error), std::cos(yaw_error)); // Wrap to [-pi, pi]
     double yaw_desired_vel = Kyaw * yaw_error;
     m_velocity_commands[5] = yaw_desired_vel; // Rotation around z-axis (yaw)    
 }

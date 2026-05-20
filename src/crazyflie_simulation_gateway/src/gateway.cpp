@@ -84,6 +84,9 @@ public:
 
 class Gateway : public rclcpp::Node
 {
+  private: 
+    std::shared_ptr<rclcpp::TimerBase> m_test_timer;
+    std::shared_ptr<rclcpp::CallbackGroup> m_test_callback_group;
 public:
     Gateway()
     : Node("crazyflie_simulation_gateway")
@@ -106,11 +109,6 @@ public:
         service_qos,
         m_gateway_callback_group);
     
-    
-      m_check_crazyflie_processes_timer = this->create_wall_timer(std::chrono::milliseconds(100),
-        std::bind(&Gateway::check_crazyflie_processes, this),
-        m_gateway_callback_group);
-
       m_publish_positions_callback_group = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
       auto publisher_options = rclcpp::PublisherOptions();
       publisher_options.callback_group = m_publish_positions_callback_group;
@@ -130,19 +128,15 @@ public:
 
     ~Gateway(){}
 
-    void check_crazyflie_processes()
+    void shutdown_all_crazyflies()
     {
       std::lock_guard<std::mutex> lock(m_crazyflies_mutex);
 
-      if (sigint_received.load())
+      if (m_crazyflies.empty()) gateway_shutdown_done.store(true);
+      else RCLCPP_INFO(this->get_logger(), "Shutting down all crazyflies due to SIGINT. This might take a moment.");
+      for (auto &pair : m_crazyflies)
       {
-         if (m_crazyflies.empty()) gateway_shutdown_done.store(true);
-         else RCLCPP_INFO(this->get_logger(), "Shutting down all crazyflies due to SIGINT. This might take a moment.");
-         for (auto &pair : m_crazyflies)
-         {
-            pair.second.lifecycle_client->shutdown_crazyflie_async();
-         }
-         m_check_crazyflie_processes_timer->cancel();
+        pair.second.lifecycle_client->shutdown_crazyflie_async();
       }
     }
 
@@ -250,7 +244,6 @@ public:
 
     void on_crazyflie_shutdown(int id)
     {
-      RCLCPP_DEBUG(this->get_logger(), "Detected shutdown on crazyflie with id %d.", id);
       std::unique_lock<std::mutex> lock(m_crazyflies_mutex);
    
       auto it = m_crazyflies.find(id);
@@ -428,15 +421,10 @@ private:
 private: 
     std::shared_ptr<rclcpp::CallbackGroup> m_lifecycle_client_callback_group;
 
-    std::shared_ptr<rclcpp::CallbackGroup> m_shutdown_detector_callback_group;
-    std::shared_ptr<rclcpp::TimerBase> m_shutdown_detector_timer;
-
     std::shared_ptr<rclcpp::CallbackGroup> m_gateway_callback_group;
     std::shared_ptr<rclcpp::Service<crazyflie_interfaces::srv::AddCrazyflie>> m_add_crazyflie_service;
     std::shared_ptr<rclcpp::Service<crazyflie_interfaces::srv::RemoveCrazyflie>> m_remove_crazyflie_service; 
     
-    std::shared_ptr<rclcpp::TimerBase> m_check_crazyflie_processes_timer;
-
     std::shared_ptr<rclcpp::CallbackGroup> m_publish_positions_callback_group;
     std::shared_ptr<rclcpp::Publisher<crazyflie_interfaces::msg::PoseStampedArray>> m_positions_publisher;
     std::shared_ptr<rclcpp::TimerBase> m_publish_positions_timer;
@@ -450,10 +438,19 @@ private:
 
 
 
-void sigint_handler(int signum)
+void signal_thread(
+    std::shared_ptr<Gateway> gateway,
+    rclcpp::executors::MultiThreadedExecutor* executor)
 {
-    (void)signum;
+    sigset_t set;
+    sigemptyset(&set);
+    sigaddset(&set, SIGINT);
+
+    int sig;
+    sigwait(&set, &sig);
+
     sigint_received.store(true);
+    gateway->shutdown_all_crazyflies();
     int safety_counter = 0;
     int last_remaining = gateway_shutdown_count_remaining.load();
     auto start_time = std::chrono::steady_clock::now();
@@ -464,32 +461,48 @@ void sigint_handler(int signum)
         last_remaining = remaining;
 
         if (start_time + std::chrono::milliseconds(500) < std::chrono::steady_clock::now()) {
-            std::cerr << "Waiting for gateway to shut down cleanly after SIGINT. Remaining crazyflies: " << remaining << std::endl;
+            RCLCPP_INFO(gateway->get_logger(), "Waiting for gateway to shut down cleanly after SIGINT. Remaining crazyflies: %d", remaining);
             start_time = std::chrono::steady_clock::now();
         }
 
         safety_counter++;
-        if (safety_counter > 500) break;// 3 seconds timeout
+        if (safety_counter > 300) break;// 3 seconds timeout
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    if (gateway_shutdown_done.load()) std::cerr << "Gateway shut down cleanly after SIGINT." << std::endl;
-    else std::cerr << "Gateway shutdown after SIGINT timed out." << std::endl;
+    if (gateway_shutdown_done.load()) RCLCPP_INFO(gateway->get_logger(), "Gateway shut down cleanly after SIGINT.");
+    else RCLCPP_ERROR(gateway->get_logger(), "Gateway shutdown after SIGINT timed out.");
+
+  executor->remove_node(gateway->get_node_base_interface());
+
+  executor->cancel();
+  rclcpp::shutdown();
+  std::_Exit(0); 
 }
 
-
+void block_sigint()
+{
+  sigset_t set;
+  sigemptyset(&set);
+  sigaddset(&set, SIGINT);
+  pthread_sigmask(SIG_BLOCK, &set, nullptr);
+}
 int main(int argc, char ** argv)
 {
-  signal(SIGINT, sigint_handler);
-  // Install before rclcpp this way rclcpp will store it as a "old" handler and execute it before its own shutdown
+  block_sigint();
 
   rclcpp::init(argc, argv);
   rclcpp::executors::MultiThreadedExecutor executor;
 
   auto gateway = std::make_shared<Gateway>();
   
+  std::thread sig_thread(
+    signal_thread,
+    gateway,
+    &executor);
+
   executor.add_node(gateway);
   executor.spin();
-  executor.remove_node(gateway->get_node_base_interface());
-  rclcpp::shutdown();
+
+  sig_thread.join();
   return 0;
 }

@@ -20,7 +20,8 @@ public:
         return false;
     };
 
-    void set_target_pose(const Eigen::Affine3d &target_pose) {
+    void set_target_pose(const Eigen::Affine3d &target_pose) 
+    {
         m_desired_pose = target_pose;
     }
 
