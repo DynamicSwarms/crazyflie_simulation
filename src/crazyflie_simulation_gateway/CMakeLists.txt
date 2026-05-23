@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.10)
 project(crazyflie_simulation_gateway)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -7,6 +7,7 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(rclcpp_components REQUIRED)
@@ -22,11 +23,12 @@ target_include_directories(gateway PUBLIC
   $<INSTALL_INTERFACE:include>)
 target_compile_features(gateway PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 
-ament_target_dependencies(gateway
-  rclcpp
-  rclcpp_components
-  crazyflie_interfaces
-  crazyflie_simulation)
+target_link_libraries(gateway
+  rclcpp::rclcpp
+  rclcpp_components::component
+  ament_index_cpp::ament_index_cpp
+  crazyflie_interfaces::crazyflie_interfaces
+  crazyflie_simulation::crazyflie_sim_component)
 
 
 set(GATEWAY_DEPS
@@ -37,14 +39,19 @@ target_include_directories(gateway_deps PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
 )
-ament_target_dependencies(gateway_deps
-  rclcpp
-  rclcpp_lifecycle
-  lifecycle_msgs)
+target_link_libraries(gateway_deps
+  rclcpp::rclcpp
+  rclcpp_lifecycle::rclcpp_lifecycle
+  lifecycle_msgs::lifecycle_msgs)
 
 target_link_libraries(gateway
   gateway_deps
   Eigen3::Eigen
+)
+
+install(TARGETS gateway_deps
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
 )
 
 install(TARGETS gateway

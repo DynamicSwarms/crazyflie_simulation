@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.10)
 project(crazyflie_simulation)
 
 
@@ -61,9 +61,9 @@ target_link_libraries(crtp_driver_lib
   simulation_lib  
   Eigen3::Eigen)
 
-ament_target_dependencies(crtp_driver_lib 
-  rclcpp
-  crazyflie_interfaces)
+target_link_libraries(crtp_driver_lib 
+  rclcpp::rclcpp
+  crazyflie_interfaces::crazyflie_interfaces)
 
 # Build the crazyflie node executable
 add_executable(crazyflie src/crazyflie.cpp)
@@ -73,11 +73,11 @@ target_link_libraries(crazyflie
   crtp_driver_lib
 )
 
-ament_target_dependencies(crazyflie 
-  rclcpp_lifecycle
-  rclcpp
-  rclcpp_components
-  crazyflie_interfaces)
+target_link_libraries(crazyflie 
+  rclcpp_lifecycle::rclcpp_lifecycle
+  rclcpp::rclcpp
+  rclcpp_components::component
+  crazyflie_interfaces::crazyflie_interfaces)
 
 target_include_directories(crazyflie PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -90,10 +90,11 @@ add_library(crazyflie_sim_component SHARED src/crazyflie.cpp)
 target_compile_definitions(crazyflie_sim_component
   PRIVATE "COMPOSITION_BUILDING_DLL")
 target_link_libraries(crazyflie_sim_component simulation_lib crtp_driver_lib)
-ament_target_dependencies(crazyflie_sim_component
-  rclcpp
-  rclcpp_lifecycle
-  rclcpp_components)
+target_link_libraries(crazyflie_sim_component
+  rclcpp::rclcpp
+  rclcpp_lifecycle::rclcpp_lifecycle
+  rclcpp_components::component
+)
 
 rclcpp_components_register_nodes(crazyflie_sim_component "Crazyflie")
 install(TARGETS crazyflie_sim_component DESTINATION lib)

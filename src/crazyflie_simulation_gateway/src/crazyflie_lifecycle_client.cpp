@@ -29,7 +29,7 @@ CrazyflieLifecycleClient::CrazyflieLifecycleClient(
         node_graph_interface,
         node_services_interface,
         prefix + "/change_state",
-        rmw_qos_profile_services_default,
+        rclcpp::ServicesQoS(),
         callback_group);    
 }
 

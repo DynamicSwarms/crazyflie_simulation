@@ -7,7 +7,7 @@ CrazyflieController::CrazyflieController()
 CrazyflieController::~CrazyflieController()
 {
 }
-
+#include <iostream>
 void 
 CrazyflieController::m_update(double d_t, Eigen::Affine3d current_pose)
 {
@@ -35,10 +35,11 @@ CrazyflieController::m_update(double d_t, Eigen::Affine3d current_pose)
     m_up_integral += up_error * d_t;
         
     // Avoid going lower than the floor
-    if (z_global < 0.025 && target_z <= 0.025) {
+    if (z_global < -0.1 && target_z <= -0.1) {
      up_error = 0;
      m_up_integral = 0; // Avoid windup due to boundry condition
     }
+    std::cerr << target_z << " " << z_global << " " << up_error << " " << m_desired_pose.translation().transpose() << std::endl;
           
     // Calculate PI controller output
     double forward_desired = Kp * forward_error + Ki * m_forward_integral;

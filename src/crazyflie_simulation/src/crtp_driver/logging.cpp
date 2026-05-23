@@ -48,7 +48,7 @@ Logging::Logging(
         node_services_interface,
         "~/add_logging",
         std::bind(&Logging::m_add_log_block_service, this, _1, _2),
-        rmw_qos_profile_services_default,
+        rclcpp::ServicesQoS(),
         m_callback_group
     );
 
@@ -57,7 +57,7 @@ Logging::Logging(
         node_services_interface,
         "~/remove_logging",
         std::bind(&Logging::m_remove_log_block_service, this, _1, _2),
-        rmw_qos_profile_services_default,
+        rclcpp::ServicesQoS(),
         m_callback_group
     );
     

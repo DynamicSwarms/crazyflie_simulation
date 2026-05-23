@@ -31,12 +31,16 @@ Simulation::Simulation(
     initial_state.x[QS::ATTZ] = q.z();
 
     m_quadrotor->setState(initial_state);
-    m_quadrotor->setWorldBox((Matrix<3, 2>() << -10, 10, -10, 10, 0.0, 10).finished());
+    m_quadrotor->setWorldBox((Matrix<3, 2>() << -10, 10, -10, 10, -0.5, 10).finished());
 
     m_cmd.t = 0.0;
     m_cmd.thrusts = quadcopter::Vector<4>::Zero();
+    m_cmd.thrusts[0] = 0.07;
+    m_cmd.thrusts[1] = 0.07;
+    m_cmd.thrusts[2] = 0.07;
+    m_cmd.thrusts[3] = 0.07;
 
-    m_controller->set_target_pose(initial_pose);
+    set_target_pose(initial_pose);
 }
 
 Simulation::~Simulation()
@@ -91,6 +95,8 @@ void
 Simulation::set_target_pose(const Eigen::Affine3d &target_pose)
 {
     m_controller->set_target_pose(target_pose);
+    std::cerr << "Set target pose: " << target_pose.translation().transpose() << std::endl;
+
 }
 
 double

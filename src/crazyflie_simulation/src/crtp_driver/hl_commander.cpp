@@ -25,7 +25,7 @@ HighLevelCommander::HighLevelCommander(
         node_services_interface,
         "~/land",
         std::bind(&HighLevelCommander::land_service, this, _1, _2),
-        rmw_qos_profile_services_default,
+        rclcpp::ServicesQoS(),
         m_callback_group
     );
 
@@ -34,7 +34,7 @@ HighLevelCommander::HighLevelCommander(
         node_services_interface,
         "~/takeoff",
         std::bind(&HighLevelCommander::takeoff_service, this, _1, _2),
-        rmw_qos_profile_services_default,
+        rclcpp::ServicesQoS(),
         m_callback_group
     );
 
@@ -43,7 +43,7 @@ HighLevelCommander::HighLevelCommander(
         node_services_interface,
         "~/go_to",
         std::bind(&HighLevelCommander::goto_service, this, _1, _2),
-        rmw_qos_profile_services_default,
+        rclcpp::ServicesQoS(),
         m_callback_group
     );
 

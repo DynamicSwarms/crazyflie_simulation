@@ -33,7 +33,7 @@ GenericCommander::GenericCommander(
         node_services_interface,
         "~/notify_setpoints_stop",
         std::bind(&GenericCommander::notify_setpoints_stop_service, this, _1, _2),
-        rmw_qos_profile_services_default,
+        rclcpp::ServicesQoS(),
         m_callback_group
     );
      

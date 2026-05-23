@@ -22,12 +22,12 @@ This software can also be used as a standalone simulator.
 
 1. If you have not already done so, install ROS2 with the following guide:
 
-    https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debs.html
+    https://docs.ros.org/en/lyrical/Installation/Ubuntu-Install-Debs.html
 
 2. Install some ROS2 dependencies:
 
     ```
-    sudo apt-get install ros-humble-tf-transformations
+    sudo apt-get install ros-lyrical-tf-transformations 
     ```
 
 
@@ -46,14 +46,14 @@ This software can also be used as a standalone simulator.
     ```
     cd src
     git clone https://github.com/DynamicSwarms/crazyflie_simulation.git
-    git clone https://github.com/DynamicSwarms/crazyflie_interfaces.git
+    git clone https://github.com/DynamicSwarms/crazyflie_interfaces.git -b crazyswarm2_alignment
     cd ..
     ```
 
 3. Build the project from `ros2_ws` folder
 
     ```
-    source /opt/ros/humble/setup.bash
+    source /opt/ros/lyrical/setup.bash
     colcon build
     ```
 
