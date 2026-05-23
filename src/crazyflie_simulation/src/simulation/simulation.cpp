@@ -95,8 +95,6 @@ void
 Simulation::set_target_pose(const Eigen::Affine3d &target_pose)
 {
     m_controller->set_target_pose(target_pose);
-    std::cerr << "Set target pose: " << target_pose.translation().transpose() << std::endl;
-
 }
 
 double

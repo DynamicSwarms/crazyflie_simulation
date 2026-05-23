@@ -39,8 +39,7 @@ CrazyflieController::m_update(double d_t, Eigen::Affine3d current_pose)
      up_error = 0;
      m_up_integral = 0; // Avoid windup due to boundry condition
     }
-    std::cerr << target_z << " " << z_global << " " << up_error << " " << m_desired_pose.translation().transpose() << std::endl;
-          
+              
     // Calculate PI controller output
     double forward_desired = Kp * forward_error + Ki * m_forward_integral;
     double sideways_desired = Kp * sideways_error + Ki * m_sideways_integral;
