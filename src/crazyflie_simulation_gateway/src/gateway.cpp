@@ -15,7 +15,7 @@
 #include "crazyflie_interfaces/srv/add_crazyflie.hpp"
 #include "crazyflie_interfaces/srv/remove_crazyflie.hpp"
 
-#include "crazyflie_interfaces/msg/pose_stamped_array.hpp"
+#include "crazyflie_interfaces/msg/pose_named_array.hpp"
 
 #include "crazyflie_simulation_gateway/crazyflie_lifecycle_client.hpp"
 
@@ -111,7 +111,7 @@ public:
       m_publish_positions_callback_group = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
       auto publisher_options = rclcpp::PublisherOptions();
       publisher_options.callback_group = m_publish_positions_callback_group;
-      m_positions_publisher = this->create_publisher<crazyflie_interfaces::msg::PoseStampedArray>("/cf_positions", rclcpp::QoS(10), publisher_options);
+      m_positions_publisher = this->create_publisher<crazyflie_interfaces::msg::PoseNamedArray>("/cf_positions", rclcpp::QoS(10), publisher_options);
       m_publish_positions_timer = rclcpp::create_timer(
         this->get_node_base_interface(),
         this->get_node_timers_interface(),
@@ -270,7 +270,7 @@ public:
     {
         std::lock_guard<std::mutex> lock(m_crazyflies_mutex);
 
-        crazyflie_interfaces::msg::PoseStampedArray pose_array_msg;
+        crazyflie_interfaces::msg::PoseNamedArray pose_array_msg;
         pose_array_msg.header.stamp = this->now();
         pose_array_msg.header.frame_id = "world";
 
@@ -285,9 +285,11 @@ public:
                 continue;
             }
 
-            geometry_msgs::msg::PoseStamped pose_msg;
+            crazyflie_interfaces::msg::PoseNamed pose_msg;
             pose_msg.header.stamp = this->now();
-            pose_msg.header.frame_id = "cf" + std::to_string(id);
+            pose_msg.name = "cf" + std::to_string(id);
+            pose_msg.rotation_valid = true;
+            
             Eigen::Affine3d pose = crazyflie_ptr->get_pose();
             pose_msg.pose.position.x = pose.translation().x();
             pose_msg.pose.position.y = pose.translation().y();
@@ -422,7 +424,7 @@ private:
     std::shared_ptr<rclcpp::Service<crazyflie_interfaces::srv::RemoveCrazyflie>> m_remove_crazyflie_service; 
     
     std::shared_ptr<rclcpp::CallbackGroup> m_publish_positions_callback_group;
-    std::shared_ptr<rclcpp::Publisher<crazyflie_interfaces::msg::PoseStampedArray>> m_positions_publisher;
+    std::shared_ptr<rclcpp::Publisher<crazyflie_interfaces::msg::PoseNamedArray>> m_positions_publisher;
     std::shared_ptr<rclcpp::TimerBase> m_publish_positions_timer;
 
     std::unique_ptr<class_loader::ClassLoader> m_loader;

@@ -18,7 +18,7 @@ Localization::Localization(
     publisher_options.callback_group = m_callback_group;
 
     if (publish_to_cf) {
-        m_pose_publisher = rclcpp::create_publisher<crazyflie_interfaces::msg::PoseStampedArray>(
+        m_pose_publisher = rclcpp::create_publisher<crazyflie_interfaces::msg::PoseNamedArray>(
             node_topics_interface,
             "/cf_positions",
             rclcpp::QoS(10),
@@ -41,13 +41,15 @@ void
 Localization::publish_timer_callback()
 {
     if (auto simulation = m_simulation.lock()) {
-        crazyflie_interfaces::msg::PoseStampedArray pose_array_msg;
+        crazyflie_interfaces::msg::PoseNamedArray pose_array_msg;
+        pose_array_msg.header.frame_id = "world";
 
-        geometry_msgs::msg::PoseStamped pose_msg;
+        crazyflie_interfaces::msg::PoseNamed pose_msg;
         Eigen::Affine3d pose = simulation->get_current_pose();
 
         pose_msg.header.stamp = rclcpp::Clock().now();
-        pose_msg.header.frame_id = simulation->get_name();
+        pose_msg.name = simulation->get_name();
+        pose_msg.rotation_valid = true;
 
         pose_msg.pose.position.x = pose.translation().x();
         pose_msg.pose.position.y = pose.translation().y();

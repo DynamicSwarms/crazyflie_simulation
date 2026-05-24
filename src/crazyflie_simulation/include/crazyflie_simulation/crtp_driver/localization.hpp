@@ -4,7 +4,7 @@
 
 #include "crazyflie_simulation/simulation/simulation.hpp"
 
-#include "crazyflie_interfaces/msg/pose_stamped_array.hpp"
+#include "crazyflie_interfaces/msg/pose_named_array.hpp"
 
 class Localization {
 public:
@@ -28,5 +28,5 @@ private:
     std::shared_ptr<rclcpp::CallbackGroup> m_callback_group;
 
     std::shared_ptr<rclcpp::TimerBase> m_publish_timer;
-    std::shared_ptr<rclcpp::Publisher<crazyflie_interfaces::msg::PoseStampedArray>> m_pose_publisher;
+    std::shared_ptr<rclcpp::Publisher<crazyflie_interfaces::msg::PoseNamedArray>> m_pose_publisher;
 };
