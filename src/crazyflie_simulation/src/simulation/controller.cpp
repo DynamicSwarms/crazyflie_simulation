@@ -7,9 +7,9 @@ CrazyflieController::CrazyflieController()
 CrazyflieController::~CrazyflieController()
 {
 }
-#include <iostream>
+
 void 
-CrazyflieController::m_update(double d_t, Eigen::Affine3d current_pose)
+CrazyflieController::m_update_position_controller(double d_t, Eigen::Affine3d current_pose)
 {
     double Kp = 1.0; // Proportional gain
     double Ki = 0.1; // Integral gain
@@ -63,6 +63,25 @@ CrazyflieController::m_update(double d_t, Eigen::Affine3d current_pose)
     yaw_error = std::atan2(std::sin(yaw_error), std::cos(yaw_error)); // Wrap to [-pi, pi]
     double yaw_desired_vel = Kyaw * yaw_error;
     m_velocity_commands[5] = yaw_desired_vel; // Rotation around z-axis (yaw)    
+}
+
+void 
+CrazyflieController::m_update_velocity_controller(double d_t, Eigen::Affine3d current_velocity)
+{
+    (void)d_t; 
+    // For velocity control, we directly use the desired velocity and yaw rate as commands
+    m_velocity_commands[0] = m_desired_velocity.x(); // Forward velocity
+    m_velocity_commands[1] = m_desired_velocity.y(); // Sideways velocity
+
+    // For vertical we need a simple P controller to maintain altitude
+    double Kp_altitude = 1.0; // Proportional gain for altitude control
+    double z_error = m_desired_velocity.z() - current_velocity.translation().z();
+    m_velocity_commands[2] = Kp_altitude * z_error; // Upward velocity command
+
+
+    m_velocity_commands[3] = 0.0; // No rotation around x-axis
+    m_velocity_commands[4] = 0.0; // No rotation around y-axis
+    m_velocity_commands[5] = m_desired_yaw_rate; // Rotation around z-axis (yaw)
 }
 
 bool

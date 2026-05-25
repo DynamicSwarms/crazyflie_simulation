@@ -19,13 +19,18 @@ GenericCommander::GenericCommander(
     auto sub_opt = rclcpp::SubscriptionOptions();
     sub_opt.callback_group = m_callback_group;
 
-
-
     m_cmd_position_sub = rclcpp::create_subscription<crazyflie_interfaces::msg::Position>(
         node_topics_interface,
         "~/cmd_position",
         10,
         std::bind(&GenericCommander::cmd_position_callback, this, _1),
+        sub_opt);
+
+    m_cmd_velocity_world_sub = rclcpp::create_subscription<crazyflie_interfaces::msg::VelocityWorld>(
+        node_topics_interface,
+        "~/cmd_velocity_world",
+        10,
+        std::bind(&GenericCommander::cmd_velocity_world_callback, this, _1),
         sub_opt);
 
     m_notify_setpoints_stop_service = rclcpp::create_service<crazyflie_interfaces::srv::NotifySetpointsStop>(
@@ -45,9 +50,21 @@ GenericCommander::cmd_position_callback(const crazyflie_interfaces::msg::Positio
 {
     if (auto simulation = m_simulation.lock()) {
         Eigen::Vector3d target(msg->x, msg->y, msg->z);
-        simulation->set_target_pose(from_xyz_and_yaw(target, msg->yaw * 180.0 / M_PI));
+        // Yaw comes in degrees, method transforms to radians for the transformation
+        simulation->set_target_pose(from_xyz_and_yaw(target, msg->yaw));
     }
 }
+
+void
+GenericCommander::cmd_velocity_world_callback(const crazyflie_interfaces::msg::VelocityWorld::SharedPtr msg)
+{
+    if (auto simulation = m_simulation.lock()) {
+        Eigen::Vector3d velocity(msg->vel.x, msg->vel.y, msg->vel.z);
+        // Yaw rate comes in degrees per second, but we want it in radians per second for the transformation
+        simulation->set_target_velocity_world(velocity, msg->yaw_rate * M_PI / 180.0);
+    }
+}
+
 
 void 
 GenericCommander::notify_setpoints_stop_service(

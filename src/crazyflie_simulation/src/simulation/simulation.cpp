@@ -50,7 +50,7 @@ Simulation::~Simulation()
 void
 Simulation::update(double d_t)
 {
-    m_controller->update(d_t, get_current_pose());
+    m_controller->update(d_t, get_current_pose(), get_current_velocity());
     std::vector<double> motor_commands;
     if (m_controller->get_motor_commands(motor_commands)) {
         m_cmd.thrusts = quadcopter::Vector<4>(motor_commands[0], motor_commands[1], motor_commands[2], motor_commands[3]);
@@ -91,10 +91,31 @@ Simulation::get_current_pose()
     }
 }
 
+Eigen::Affine3d
+Simulation::get_current_velocity()
+{
+    QuadState state;
+    if (m_quadrotor->getState(&state)) {
+        Eigen::Affine3d velocity = Eigen::Affine3d::Identity();
+        velocity.translation() = Eigen::Vector3d(state.x[QS::VELX], state.x[QS::VELY], state.x[QS::VELZ]);
+        velocity.linear() = Eigen::Quaterniond(state.x[QS::ATTW], state.x[QS::ATTX], state.x[QS::ATTY], state.x[QS::ATTZ]).toRotationMatrix();
+        return velocity;
+    } else {
+        std::cerr << "Failed to get quadrotor state" << std::endl;
+        return Eigen::Affine3d::Identity();
+    }
+}
+
 void 
 Simulation::set_target_pose(const Eigen::Affine3d &target_pose)
 {
     m_controller->set_target_pose(target_pose);
+}
+
+void 
+Simulation::set_target_velocity_world(const Eigen::Vector3d &velocity, double yaw_rate)
+{
+    m_controller->set_target_velocity_world(velocity, yaw_rate);
 }
 
 double

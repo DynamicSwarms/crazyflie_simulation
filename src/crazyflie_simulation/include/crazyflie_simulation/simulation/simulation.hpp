@@ -18,8 +18,10 @@ public:
     void update(double d_t);
 
     Eigen::Affine3d get_current_pose();
+    Eigen::Affine3d get_current_velocity();
 
     void set_target_pose(const Eigen::Affine3d &target_pose);
+    void set_target_velocity_world(const Eigen::Vector3d &velocity, double yaw_rate);
 
     std::string get_name() const { return m_name; }
     double get_battery_voltage();

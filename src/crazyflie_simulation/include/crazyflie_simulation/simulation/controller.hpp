@@ -13,7 +13,8 @@ public:
     bool get_velocity_commands(std::vector<double> &velocity_commands) override;
 
 private:
-    void m_update(double d_t, Eigen::Affine3d current_pose) override;
+    void m_update_position_controller(double d_t, Eigen::Affine3d current_pose) override;
+    void m_update_velocity_controller(double d_t, Eigen::Affine3d current_pose) override;
 
 private: 
     // Initialize error accumulators
