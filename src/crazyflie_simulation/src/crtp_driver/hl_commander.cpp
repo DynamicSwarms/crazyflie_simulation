@@ -92,7 +92,7 @@ void HighLevelCommander::goto_service(
             target.x() = current_pose.translation().x() + request->goal.x;
             target.y() = current_pose.translation().y() + request->goal.y;
             target.z() = current_pose.translation().z() + request->goal.z;
-            double current_yaw = std::atan2(current_pose.linear()(1, 0), current_pose.linear()(0, 0)) * 180.0 / M_PI;
+            double current_yaw = std::atan2(current_pose.linear()(1, 0), current_pose.linear()(0, 0));
             double target_yaw = current_yaw + request->yaw;
             
             simulation->set_target_pose(from_xyz_and_yaw(target, target_yaw));
