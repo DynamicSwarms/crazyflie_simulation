@@ -51,7 +51,7 @@ GenericCommander::cmd_position_callback(const crazyflie_interfaces::msg::Positio
     if (auto simulation = m_simulation.lock()) {
         Eigen::Vector3d target(msg->x, msg->y, msg->z);
         // Yaw comes in degrees, method transforms to radians for the transformation
-        simulation->set_target_pose(from_xyz_and_yaw(target, msg->yaw));
+        simulation->set_target_pose(from_xyz_and_yaw(target, msg->yaw, true));
     }
 }
 

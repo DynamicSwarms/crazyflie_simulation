@@ -60,7 +60,7 @@ void HighLevelCommander::land_service(
         Eigen::Affine3d current_pose = simulation->get_current_pose();
         current_pose.translation().z() = request->height + 0.02;  // add small offset to avoid ground collision
 
-        simulation->set_target_pose(from_xyz_and_yaw(current_pose.translation(), request->yaw));
+        simulation->set_target_pose(from_xyz_and_yaw(current_pose.translation(), request->yaw, false));
     }
 }
 
@@ -73,7 +73,7 @@ void HighLevelCommander::takeoff_service(
     if (auto simulation = m_simulation.lock()) {
         Eigen::Affine3d current_pose = simulation->get_current_pose();
         current_pose.translation().z() = request->height;
-        simulation->set_target_pose(from_xyz_and_yaw(current_pose.translation(), request->yaw));
+        simulation->set_target_pose(from_xyz_and_yaw(current_pose.translation(), request->yaw, false));
     }
 }
 
@@ -95,10 +95,10 @@ void HighLevelCommander::goto_service(
             double current_yaw = std::atan2(current_pose.linear()(1, 0), current_pose.linear()(0, 0));
             double target_yaw = current_yaw + request->yaw;
             
-            simulation->set_target_pose(from_xyz_and_yaw(target, target_yaw));
+            simulation->set_target_pose(from_xyz_and_yaw(target, target_yaw, false));
         } else {
             Eigen::Vector3d target_pos(request->goal.x, request->goal.y, request->goal.z);
-            simulation->set_target_pose(from_xyz_and_yaw(target_pos, request->yaw));
+            simulation->set_target_pose(from_xyz_and_yaw(target_pos, request->yaw, false));
         }
     }
 }
