@@ -136,6 +136,7 @@ public:
       for (auto &pair : m_crazyflies)
       {
         pair.second.lifecycle_client->shutdown_crazyflie_async();
+        RCLCPP_INFO(this->get_logger(), "Sent shutdown request to crazyflie with id %d.", pair.first);
       }
     }
 
@@ -243,6 +244,7 @@ public:
 
     void on_crazyflie_shutdown(int id)
     {
+      RCLCPP_INFO(this->get_logger(), "Received shutdown notification for crazyflie with id %d.", id);
       std::unique_lock<std::mutex> lock(m_crazyflies_mutex);
    
       auto it = m_crazyflies.find(id);
@@ -440,41 +442,37 @@ void signal_thread(
     std::shared_ptr<Gateway> gateway,
     rclcpp::executors::MultiThreadedExecutor* executor)
 {
-    sigset_t set;
-    sigemptyset(&set);
-    sigaddset(&set, SIGINT);
+  sigset_t set;
+  sigemptyset(&set);
+  sigaddset(&set, SIGINT);
 
-    int sig;
-    sigwait(&set, &sig);
+  int sig;
+  sigwait(&set, &sig);
 
-    sigint_received.store(true);
-    gateway->shutdown_all_crazyflies();
-    int safety_counter = 0;
-    int last_remaining = gateway_shutdown_count_remaining.load();
-    auto start_time = std::chrono::steady_clock::now();
-    while (!gateway_shutdown_done.load())
-    { 
-        int remaining = gateway_shutdown_count_remaining.load();
-        if (remaining != last_remaining) safety_counter = 0; // reset counter if there is progress
-        last_remaining = remaining;
+  sigint_received.store(true);
+  gateway->shutdown_all_crazyflies();
+  int safety_counter = 0;
+  int last_remaining = gateway_shutdown_count_remaining.load();
+  auto start_time = std::chrono::steady_clock::now();
+  while (!gateway_shutdown_done.load())
+  { 
+      int remaining = gateway_shutdown_count_remaining.load();
+      if (remaining != last_remaining) safety_counter = 0; // reset counter if there is progress
+      last_remaining = remaining;
 
-        if (start_time + std::chrono::milliseconds(500) < std::chrono::steady_clock::now()) {
-            RCLCPP_INFO(gateway->get_logger(), "Waiting for gateway to shut down cleanly after SIGINT. Remaining crazyflies: %d", remaining);
-            start_time = std::chrono::steady_clock::now();
-        }
+      if (start_time + std::chrono::milliseconds(500) < std::chrono::steady_clock::now()) {
+          RCLCPP_INFO(gateway->get_logger(), "Waiting for gateway to shut down cleanly after SIGINT. Remaining crazyflies: %d", remaining);
+          start_time = std::chrono::steady_clock::now();
+      }
 
-        safety_counter++;
-        if (safety_counter > 300) break;// 3 seconds timeout
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    if (gateway_shutdown_done.load()) RCLCPP_INFO(gateway->get_logger(), "Gateway shut down cleanly after SIGINT.");
-    else RCLCPP_ERROR(gateway->get_logger(), "Gateway shutdown after SIGINT timed out.");
-
-  executor->remove_node(gateway->get_node_base_interface());
+      safety_counter++;
+      if (safety_counter > 300) break;// 3 seconds timeout
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  if (gateway_shutdown_done.load()) RCLCPP_INFO(gateway->get_logger(), "Gateway shut down cleanly after SIGINT.");
+  else RCLCPP_ERROR(gateway->get_logger(), "Gateway shutdown after SIGINT timed out.");
 
   executor->cancel();
-  rclcpp::shutdown();
-  std::_Exit(0); 
 }
 
 void block_sigint()
@@ -502,5 +500,8 @@ int main(int argc, char ** argv)
   executor.spin();
 
   sig_thread.join();
+
+  executor.remove_node(gateway->get_node_base_interface());
+  rclcpp::shutdown();
   return 0;
 }
