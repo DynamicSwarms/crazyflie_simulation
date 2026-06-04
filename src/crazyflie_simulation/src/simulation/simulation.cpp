@@ -31,7 +31,7 @@ Simulation::Simulation(
     initial_state.x[QS::ATTZ] = q.z();
 
     m_quadrotor->setState(initial_state);
-    m_quadrotor->setWorldBox((Matrix<3, 2>() << -10, 10, -10, 10, -0.5, 10).finished());
+    m_quadrotor->setWorldBox((Matrix<3, 2>() << -10, 10, -10, 10, 0.0, 10).finished());
 
     m_cmd.t = 0.0;
     m_cmd.thrusts = quadcopter::Vector<4>::Zero();
@@ -66,6 +66,10 @@ Simulation::update(double d_t)
             state.x[QS::OMEX] = velocity_commands[3];
             state.x[QS::OMEY] = velocity_commands[4];
             state.x[QS::OMEZ] = velocity_commands[5];
+
+            if (state.x[QS::VELZ] > 0.0 && state.x[QS::POSZ] < 0.05) 
+                state.x[QS::POSZ] = 0.05; // Help takeoff
+
             m_quadrotor->setState(state);
         }
     }
