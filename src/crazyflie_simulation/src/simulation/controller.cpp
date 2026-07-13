@@ -34,8 +34,8 @@ CrazyflieController::m_update_position_controller(double d_t, Eigen::Affine3d cu
     m_sideways_integral += sideways_error * d_t;
     m_up_integral += up_error * d_t;
         
-    // Avoid going lower than the floor
-    if (z_global < -0.1 && target_z <= -0.1) {
+    // Boundary for cleaner takeoff and landing
+    if (z_global < 0.05 && target_z <= 0.05) {
      up_error = 0;
      m_up_integral = 0; // Avoid windup due to boundry condition
     }

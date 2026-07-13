@@ -68,8 +68,12 @@ Simulation::update(double d_t)
             state.x[QS::OMEZ] = velocity_commands[5];
 
             if (state.x[QS::VELZ] > 0.0 && state.x[QS::POSZ] < 0.05) 
+            {
                 state.x[QS::POSZ] = 0.05; // Help takeoff
-
+                state.x[QS::ACCZ] = 20.0; // More help takeoff (g+ extra)
+                std::cerr << "Help takeoff: setting z position to 0.05 and z acceleration to 20.0" << std::endl;
+            }
+                
             m_quadrotor->setState(state);
         }
     }
