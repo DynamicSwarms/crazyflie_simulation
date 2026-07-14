@@ -19,11 +19,11 @@ class ClockNode(Node):
 
         self.ros_ns = 0
 
-        self.timer = self.create_timer(0.1 / self.rate, self.tick)
-        # We aim for a 10Hz clock in the given rate
+        self.timer = self.create_timer(0.01 / self.rate, self.tick)
+        # We aim for a 100Hz clock in the given rate
 
     def tick(self):
-        self.ros_ns += 0.1 * 1e9
+        self.ros_ns += 0.01 * 1e9
 
         msg = Clock()
         msg.clock = Time(nanoseconds=self.ros_ns).to_msg()
@@ -34,7 +34,7 @@ class ClockNode(Node):
             if param.name == "rate":
                 self.rate = param.get_parameter_value().double_value
                 self.timer.cancel()
-                self.timer = self.create_timer(0.1 / self.rate, self.tick)
+                self.timer = self.create_timer(0.01 / self.rate, self.tick)
                 self.get_logger().info(f"Set rate to {self.rate}")
 
         return SetParametersResult(successful=True)
