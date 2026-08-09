@@ -59,6 +59,24 @@ Crazyflie::Crazyflie(const rclcpp::NodeOptions &options)
         m_simulation
     ))
     {   
+      const std::string simulation_prefix = "/cf" + std::to_string(p_id) + "/simulation";
+      m_crash_service = this->create_service<std_srvs::srv::Trigger>(
+        simulation_prefix + "/crash",
+        [this](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+               std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+          m_simulation->crash();
+          response->success = true;
+          response->message = "Simulated motor thrust disabled";
+        });
+      m_battery_subscription = this->create_subscription<std_msgs::msg::Float32>(
+        simulation_prefix + "/set_battery", 1,
+        [this](const std_msgs::msg::Float32::SharedPtr message) {
+          if (message->data >= 0.0f && message->data <= 5.0f) {
+            m_simulation->set_battery_voltage(message->data);
+          } else {
+            RCLCPP_WARN(get_logger(), "Ignoring invalid simulated battery voltage: %.2f V", message->data);
+          }
+        });
       m_simulation_callback_group = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
       m_simulation_step_timer = rclcpp::create_timer(
         this->get_node_base_interface(),
@@ -94,6 +112,8 @@ Crazyflie::~Crazyflie()
   m_localization.reset();
   m_logging.reset();
   m_parameters.reset();
+  m_crash_service.reset();
+  m_battery_subscription.reset();
 } 
 
 Eigen::Affine3d 

@@ -6,6 +6,8 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
+#include <std_msgs/msg/float32.hpp>
+#include <std_srvs/srv/trigger.hpp>
 
 #include "crazyflie_simulation/crtp_driver/console.hpp"
 #include "crazyflie_simulation/crtp_driver/generic_commander.hpp"
@@ -63,4 +65,6 @@ private:
   std::shared_ptr<Localization> m_localization;
   std::shared_ptr<Logging> m_logging;
   std::shared_ptr<Parameters> m_parameters;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr m_crash_service;
+  rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr m_battery_subscription;
 };

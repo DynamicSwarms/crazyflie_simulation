@@ -4,6 +4,7 @@
 #include "crazyflie_simulation/simulation/IController.hpp"
 
 #include <Eigen/Dense>
+#include <atomic>
 
 
 class Simulation
@@ -30,6 +31,8 @@ public:
     bool can_fly();
     bool is_flying();
     bool is_tumbled();
+    void crash();
+    void set_battery_voltage(double voltage);
 
 private: 
     std::string m_name;
@@ -37,6 +40,8 @@ private:
     std::shared_ptr<quadcopter::Quadrotor> m_quadrotor;
 
     std::unique_ptr<IController> m_controller;
+    std::atomic_bool m_crashed{false};
+    std::atomic<double> m_battery_voltage{4.2};
 
 
     enum class ChargeState {

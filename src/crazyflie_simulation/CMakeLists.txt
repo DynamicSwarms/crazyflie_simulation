@@ -17,6 +17,8 @@ find_package(tf2_ros REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(crazyflie_interfaces REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 
 # Build quadcopter_model library
 add_subdirectory(quadcopter_model)
@@ -64,7 +66,6 @@ target_link_libraries(crtp_driver_lib
 target_link_libraries(crtp_driver_lib 
   rclcpp::rclcpp
   crazyflie_interfaces::crazyflie_interfaces)
-
 # Build the crazyflie node executable
 add_executable(crazyflie src/crazyflie.cpp)
 
@@ -77,7 +78,9 @@ target_link_libraries(crazyflie
   rclcpp_lifecycle::rclcpp_lifecycle
   rclcpp::rclcpp
   rclcpp_components::component
-  crazyflie_interfaces::crazyflie_interfaces)
+  crazyflie_interfaces::crazyflie_interfaces
+  std_msgs::std_msgs
+  std_srvs::std_srvs)
 
 target_include_directories(crazyflie PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -94,6 +97,8 @@ target_link_libraries(crazyflie_sim_component
   rclcpp::rclcpp
   rclcpp_lifecycle::rclcpp_lifecycle
   rclcpp_components::component
+  std_msgs::std_msgs
+  std_srvs::std_srvs
 )
 
 rclcpp_components_register_nodes(crazyflie_sim_component "Crazyflie")
@@ -126,6 +131,12 @@ install(
 ament_export_include_directories(include)
 ament_export_libraries(simulation_lib crtp_driver_lib quadcopter_model crazyflie_sim_component)
 ament_export_targets(export_crazyflie_simulation HAS_LIBRARY_TARGET)
-ament_export_dependencies(rclcpp crazyflie_interfaces Eigen3)
+ament_export_dependencies(
+  rclcpp
+  crazyflie_interfaces
+  Eigen3
+  std_msgs
+  std_srvs
+)
 
 ament_package()

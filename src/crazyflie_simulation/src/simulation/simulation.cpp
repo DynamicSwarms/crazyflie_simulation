@@ -50,13 +50,17 @@ Simulation::~Simulation()
 void
 Simulation::update(double d_t)
 {
-    m_controller->update(d_t, get_current_pose(), get_current_velocity());
+    if (m_crashed.load()) {
+        m_cmd.thrusts = quadcopter::Vector<4>::Zero();
+    } else {
+        m_controller->update(d_t, get_current_pose(), get_current_velocity());
+    }
     std::vector<double> motor_commands;
-    if (m_controller->get_motor_commands(motor_commands)) {
+    if (!m_crashed.load() && m_controller->get_motor_commands(motor_commands)) {
         m_cmd.thrusts = quadcopter::Vector<4>(motor_commands[0], motor_commands[1], motor_commands[2], motor_commands[3]);
     }
     std::vector<double> velocity_commands;
-    if (m_controller->get_velocity_commands(velocity_commands)) {
+    if (!m_crashed.load() && m_controller->get_velocity_commands(velocity_commands)) {
         QuadState state;
         if (m_quadrotor->getState(&state))
         {
@@ -128,7 +132,7 @@ Simulation::set_target_velocity_world(const Eigen::Vector3d &velocity, double ya
 double
 Simulation::get_battery_voltage()
 {
-    return 4.2;    // Dummy value for battery voltage
+    return m_battery_voltage.load();
 }
 
 double
@@ -146,7 +150,7 @@ Simulation::get_charge_state()
 bool
 Simulation::can_fly()
 {
-    return true; // Dummy value for can fly
+    return !m_crashed.load() && m_battery_voltage.load() > 3.0;
 }
 
 bool
@@ -159,5 +163,15 @@ Simulation::is_flying()
 bool
 Simulation::is_tumbled()
 {
-    return false; // Dummy value for is tumbled
+    return m_crashed.load();
+}
+
+void Simulation::crash()
+{
+    m_crashed.store(true);
+}
+
+void Simulation::set_battery_voltage(double voltage)
+{
+    m_battery_voltage.store(voltage);
 }
